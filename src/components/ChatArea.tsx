@@ -1,10 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { Bot, Wrench, Terminal, BookOpen, User } from 'lucide-react';
-import { Agent, Message } from '../types';
+import { Agent, Message, IconMap } from '../types';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
-const ICON_MAP: Record<string, React.ComponentType<{ className?: string; size?: number }>> = {
-  Wrench, Terminal, BookOpen,
-};
+const ICON_MAP: IconMap = { Wrench, Terminal, BookOpen };
 
 interface Props {
   agent: Agent;
@@ -24,13 +23,13 @@ const MessageBubble = ({ msg, agent }: { msg: Message; agent: Agent }) => {
         {isUser ? <User size={14} /> : <Icon className={agent.color} size={14} />}
       </div>
       <div
-        className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap max-w-[80%] ${
+        className={`px-4 py-3 rounded-2xl text-sm leading-relaxed max-w-[80%] ${
           isUser
-            ? 'bg-indigo-600 text-white rounded-tr-sm'
+            ? 'bg-indigo-600 text-white rounded-tr-sm whitespace-pre-wrap'
             : 'bg-slate-800 border border-slate-700 text-slate-200 rounded-tl-sm'
         }`}
       >
-        {msg.text}
+        {isUser ? msg.text : <MarkdownRenderer content={msg.text} />}
       </div>
     </div>
   );

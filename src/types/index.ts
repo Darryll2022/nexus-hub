@@ -1,3 +1,5 @@
+import { LucideIcon } from 'lucide-react';
+
 export type AgentStatus = 'idle' | 'thinking' | 'error';
 export type MessageRole = 'user' | 'agent';
 export type ApiProvider = 'openrouter' | 'groq';
@@ -32,3 +34,5 @@ export interface ModelOption {
   name: string;
   provider: ApiProvider;
 }
+
+export type IconMap = Record<string, LucideIcon>;

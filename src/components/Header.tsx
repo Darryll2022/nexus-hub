@@ -1,9 +1,7 @@
 import { Bot, Wrench, Terminal, BookOpen, Activity, Settings } from 'lucide-react';
-import { Agent } from '../types';
+import { Agent, IconMap } from '../types';
 
-const ICON_MAP: Record<string, React.ComponentType<{ className?: string; size?: number }>> = {
-  Wrench, Terminal, BookOpen,
-};
+const ICON_MAP: IconMap = { Wrench, Terminal, BookOpen };
 
 interface Props {
   agent: Agent;
