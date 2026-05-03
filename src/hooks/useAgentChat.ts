@@ -1,6 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Agent, ApiKeys, Message } from '../types';
 import { INITIAL_AGENTS } from '../constants/agents';
+
+const STORAGE_KEY = 'nexus-hub:history';
+const KEYS_STORAGE_KEY = 'nexus-hub:apikeys';
 
 const getApiEndpoint = (provider: string) =>
   provider === 'groq'
@@ -12,10 +15,75 @@ const getApiKey = (provider: string, keys: ApiKeys): string => {
   return keys.openrouter || import.meta.env.VITE_OPENROUTER_API_KEY || '';
 };
 
+// Serialize/deserialize Message dates
+const serializeHistory = (agents: Agent[]) =>
+  agents.reduce<Record<string, { role: string; text: string; timestamp: string }[]>>(
+    (acc, a) => {
+      acc[a.id] = a.history.map((m) => ({
+        ...m,
+        timestamp: m.timestamp.toISOString(),
+      }));
+      return acc;
+    },
+    {}
+  );
+
+const loadHistory = (): Record<string, Message[]> => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<
+      string,
+      { role: string; text: string; timestamp: string }[]
+    >;
+    return Object.fromEntries(
+      Object.entries(parsed).map(([id, msgs]) => [
+        id,
+        msgs.map((m) => ({
+          ...m,
+          role: m.role as Message['role'],
+          timestamp: new Date(m.timestamp),
+        })),
+      ])
+    );
+  } catch {
+    return {};
+  }
+};
+
+const loadApiKeys = (): ApiKeys => {
+  try {
+    const raw = localStorage.getItem(KEYS_STORAGE_KEY);
+    if (!raw) return { openrouter: '', groq: '' };
+    return JSON.parse(raw) as ApiKeys;
+  } catch {
+    return { openrouter: '', groq: '' };
+  }
+};
+
+const hydrateAgents = (base: Agent[]): Agent[] => {
+  const saved = loadHistory();
+  return base.map((a) =>
+    saved[a.id] && saved[a.id].length > 0 ? { ...a, history: saved[a.id] } : a
+  );
+};
+
 export const useAgentChat = () => {
-  const [agents, setAgents] = useState<Agent[]>(INITIAL_AGENTS);
+  const [agents, setAgents] = useState<Agent[]>(() => hydrateAgents(INITIAL_AGENTS));
   const [activeId, setActiveId] = useState<string>(INITIAL_AGENTS[0].id);
-  const [apiKeys, setApiKeys] = useState<ApiKeys>({ openrouter: '', groq: '' });
+  const [apiKeys, setApiKeysState] = useState<ApiKeys>(loadApiKeys);
+
+  // Persist history whenever agents change
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeHistory(agents)));
+  }, [agents]);
+
+  const setApiKeys = useCallback((keys: ApiKeys) => {
+    setApiKeysState(keys);
+    // Only persist non-sensitive structure — actual key values are stored as-is
+    // (user chose runtime entry, .env.local is the secure path)
+    localStorage.setItem(KEYS_STORAGE_KEY, JSON.stringify(keys));
+  }, []);
 
   const activeAgent = agents.find((a) => a.id === activeId)!;
 
@@ -39,7 +107,7 @@ export const useAgentChat = () => {
 
         if (!apiKey) {
           throw new Error(
-            `No API key found for ${agent.provider}. Add VITE_${agent.provider.toUpperCase()}_API_KEY to your .env.local or enter it in Settings.`
+            `No API key for ${agent.provider}. Add VITE_${agent.provider.toUpperCase()}_API_KEY to .env.local or enter it in Configure.`
           );
         }
 
@@ -105,7 +173,9 @@ export const useAgentChat = () => {
   const clearHistory = useCallback((id: string) => {
     setAgents((prev) =>
       prev.map((a) =>
-        a.id === id ? { ...a, history: [a.history[0]], status: 'idle' } : a
+        a.id === id
+          ? { ...a, history: [INITIAL_AGENTS.find((ia) => ia.id === id)!.history[0]], status: 'idle' }
+          : a
       )
     );
   }, []);
