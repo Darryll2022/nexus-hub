@@ -4,6 +4,7 @@ import { INITIAL_AGENTS } from '../constants/agents';
 
 const STORAGE_KEY = 'nexus-hub:history';
 const KEYS_STORAGE_KEY = 'nexus-hub:apikeys';
+const CUSTOM_AGENTS_KEY = 'nexus-hub:custom-agents';
 
 const getApiEndpoint = (provider: string) =>
   provider === 'groq'
@@ -61,6 +62,26 @@ const loadApiKeys = (): ApiKeys => {
   }
 };
 
+const loadCustomAgents = (): Agent[] => {
+  try {
+    const raw = localStorage.getItem(CUSTOM_AGENTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Agent[];
+    // Re-hydrate history timestamps
+    const savedHistory = loadHistory();
+    return parsed.map((a) => ({
+      ...a,
+      status: 'idle' as const,
+      history: savedHistory[a.id] ?? a.history.map((m) => ({
+        ...m,
+        timestamp: new Date(m.timestamp),
+      })),
+    }));
+  } catch {
+    return [];
+  }
+};
+
 const hydrateAgents = (base: Agent[]): Agent[] => {
   const saved = loadHistory();
   return base.map((a) =>
@@ -69,7 +90,10 @@ const hydrateAgents = (base: Agent[]): Agent[] => {
 };
 
 export const useAgentChat = () => {
-  const [agents, setAgents] = useState<Agent[]>(() => hydrateAgents(INITIAL_AGENTS));
+  const [agents, setAgents] = useState<Agent[]>(() => [
+    ...hydrateAgents(INITIAL_AGENTS),
+    ...loadCustomAgents(),
+  ]);
   const [activeId, setActiveId] = useState<string>(INITIAL_AGENTS[0].id);
   const [apiKeys, setApiKeysState] = useState<ApiKeys>(loadApiKeys);
 
@@ -80,12 +104,42 @@ export const useAgentChat = () => {
 
   const setApiKeys = useCallback((keys: ApiKeys) => {
     setApiKeysState(keys);
-    // Only persist non-sensitive structure — actual key values are stored as-is
-    // (user chose runtime entry, .env.local is the secure path)
     localStorage.setItem(KEYS_STORAGE_KEY, JSON.stringify(keys));
   }, []);
 
-  const activeAgent = agents.find((a) => a.id === activeId)!;
+  const activeAgent = agents.find((a) => a.id === activeId) ?? agents[0];
+
+  const addAgent = useCallback((agentDef: Omit<Agent, 'status' | 'history'>) => {
+    const greeting: Message = {
+      role: 'agent',
+      text: `${agentDef.name} ready. How can I help?`,
+      timestamp: new Date(),
+    };
+    const newAgent: Agent = { ...agentDef, status: 'idle', history: [greeting] };
+
+    setAgents((prev) => {
+      const updated = [...prev, newAgent];
+      // Persist custom agents (strip history — that's in STORAGE_KEY)
+      const customs = updated.filter((a) => a.id.startsWith('custom-'));
+      localStorage.setItem(CUSTOM_AGENTS_KEY, JSON.stringify(customs));
+      return updated;
+    });
+
+    setActiveId(newAgent.id);
+  }, []);
+
+  const deleteAgent = useCallback(
+    (id: string) => {
+      setAgents((prev) => {
+        const updated = prev.filter((a) => a.id !== id);
+        const customs = updated.filter((a) => a.id.startsWith('custom-'));
+        localStorage.setItem(CUSTOM_AGENTS_KEY, JSON.stringify(customs));
+        return updated;
+      });
+      if (activeId === id) setActiveId(INITIAL_AGENTS[0].id);
+    },
+    [activeId]
+  );
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -171,11 +225,14 @@ export const useAgentChat = () => {
   }, []);
 
   const clearHistory = useCallback((id: string) => {
+    const base = INITIAL_AGENTS.find((ia) => ia.id === id);
+    const greeting: Message = base
+      ? base.history[0]
+      : { role: 'agent', text: 'Ready. How can I help?', timestamp: new Date() };
+
     setAgents((prev) =>
       prev.map((a) =>
-        a.id === id
-          ? { ...a, history: [INITIAL_AGENTS.find((ia) => ia.id === id)!.history[0]], status: 'idle' }
-          : a
+        a.id === id ? { ...a, history: [greeting], status: 'idle' } : a
       )
     );
   }, []);
@@ -190,5 +247,7 @@ export const useAgentChat = () => {
     sendMessage,
     updateAgent,
     clearHistory,
+    addAgent,
+    deleteAgent,
   };
 };
