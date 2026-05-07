@@ -44,7 +44,10 @@ npx expo start    # scan QR with Expo Go app
 - **`@nexus-hub/core` alias** — Babel `module-resolver` + `tsconfig.json` paths must both point to the same file. Expo Metro bundler uses Babel; tsc uses tsconfig.
 - **AsyncStorage is async** — hydration must happen in a `useEffect`, not `useState` initializer. Added `isReady` flag to prevent render before data loads.
 - **`callLLM` is fetch-based** — works in RN without polyfills (RN ships with fetch since 0.60).
-- **Lucide icons not in core** — lucide-react is web-only. Mobile uses emoji/text icons for now. Will add `@expo/vector-icons` in next iteration.
+- **Lucide icons not in core** — lucide-react is web-only. Mobile uses `@expo/vector-icons` (MaterialCommunityIcons) via `AgentIcon.tsx` wrapper.
+- **Markdown in RN** — `react-native-markdown-display` handles full GFM. Styled per-component via a style object factory; accent colour injected per agent.
+- **Agent builder as modal** — Expo Router `presentation: "modal"` gives native sheet behaviour on iOS. Agent builder validates name/role/prompt before creating.
+- **Arbitrary colour classes** — custom agents store colour as `text-[#hex]`; resolved with a regex `\[(.+?)\]` instead of Tailwind lookup.
 
 ---
 
@@ -162,9 +165,9 @@ npx expo start    # scan QR with Expo Go app
 - [x] Chat screen with agent selector
 - [x] Settings screen for API keys
 - [x] AsyncStorage persistence
-- [ ] Vector icons (`@expo/vector-icons`)
-- [ ] Markdown rendering in mobile chat
-- [ ] Agent builder screen (mobile)
+- [x] Vector icons (`@expo/vector-icons` via `AgentIcon.tsx`)
+- [x] Markdown rendering in mobile chat (`react-native-markdown-display`)
+- [x] Agent builder screen (mobile — modal with icon + model picker)
 - [ ] Push notifications for Atlas PR reviews
 
 ### Phase 4 — Scale
