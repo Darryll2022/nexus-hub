@@ -1,0 +1,9 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@nexus-hub/core": ["../../core/src/index.ts"]
+    }
+  }
+}
