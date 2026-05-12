@@ -31,6 +31,7 @@ export const ChatInput = ({ onSend, disabled }: Props) => {
           onKeyDown={handleKeyDown}
           placeholder="Message... (Enter to send, Shift+Enter for new line)"
           rows={1}
+          maxLength={4000}
           disabled={disabled}
           className="flex-1 bg-slate-800 border border-slate-700 text-slate-200 placeholder-slate-500 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50 min-h-[48px] max-h-40 overflow-y-auto"
           style={{ height: 'auto' }}

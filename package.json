@@ -9,5 +9,9 @@
   "scripts": {
     "web": "cd packages/web && npm run dev",
     "mobile": "cd packages/mobile && expo start"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12",
+    "vite": "^6.4.2"
   }
 }

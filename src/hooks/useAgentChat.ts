@@ -12,8 +12,8 @@ const getApiEndpoint = (provider: string) =>
     : 'https://openrouter.ai/api/v1/chat/completions';
 
 const getApiKey = (provider: string, keys: ApiKeys): string => {
-  if (provider === 'groq') return keys.groq || import.meta.env.VITE_GROQ_API_KEY || '';
-  return keys.openrouter || import.meta.env.VITE_OPENROUTER_API_KEY || '';
+  if (provider === 'groq') return keys.groq || '';
+  return keys.openrouter || '';
 };
 
 // Serialize/deserialize Message dates
@@ -161,7 +161,7 @@ export const useAgentChat = () => {
 
         if (!apiKey) {
           throw new Error(
-            `No API key for ${agent.provider}. Add VITE_${agent.provider.toUpperCase()}_API_KEY to .env.local or enter it in Configure.`
+            `No API key for ${agent.provider}. Open Configure (⚙) and enter your ${agent.provider === 'groq' ? 'Groq' : 'OpenRouter'} API key.`
           );
         }
 
@@ -179,7 +179,7 @@ export const useAgentChat = () => {
           headers: {
             Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
-            'HTTP-Referer': window.location.href,
+            'HTTP-Referer': 'https://nexus-hub.vercel.app',
             'X-Title': 'Nexus Hub',
           },
           body: JSON.stringify({ model: agent.model, messages, temperature: 0.7 }),

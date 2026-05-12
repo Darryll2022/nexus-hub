@@ -53,7 +53,7 @@ export const AgentBuilderModal = ({ onClose, onSave, editingAgent }: Props) => {
   const handleSave = () => {
     if (!validate()) return;
     onSave({
-      id: editingAgent?.id ?? `custom-${Date.now()}`,
+      id: editingAgent?.id ?? `custom-${crypto.randomUUID()}`,
       name: form.name.trim(),
       role: form.role.trim(),
       iconName: form.iconName,

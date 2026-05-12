@@ -55,7 +55,7 @@ export default function AgentBuilderScreen() {
     if (!validate()) return;
 
     addAgent({
-      id: `custom-${Date.now()}`,
+      id: `custom-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`,
       name: name.trim(),
       role: role.trim(),
       iconName: selectedIcon.name,
