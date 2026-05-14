@@ -4,14 +4,19 @@ import { Agent } from '../types';
 import { FREE_MODELS } from '../constants/agents';
 
 const ICONS = [
-  { name: 'Bot', component: Bot, color: 'text-violet-400', bg: 'bg-violet-400/10' },
-  { name: 'Wrench', component: Wrench, color: 'text-amber-400', bg: 'bg-amber-400/10' },
-  { name: 'Terminal', component: Terminal, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
-  { name: 'BookOpen', component: BookOpen, color: 'text-blue-400', bg: 'bg-blue-400/10' },
-  { name: 'Zap', component: Zap, color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
-  { name: 'Cpu', component: Cpu, color: 'text-cyan-400', bg: 'bg-cyan-400/10' },
-  { name: 'FlaskConical', component: FlaskConical, color: 'text-pink-400', bg: 'bg-pink-400/10' },
+  { name: 'Bot',          component: Bot,          color: 'text-violet-400',  bg: 'bg-violet-400/10'  },
+  { name: 'Wrench',       component: Wrench,       color: 'text-amber-400',   bg: 'bg-amber-400/10'   },
+  { name: 'Terminal',     component: Terminal,     color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
+  { name: 'BookOpen',     component: BookOpen,     color: 'text-blue-400',    bg: 'bg-blue-400/10'    },
+  { name: 'Zap',          component: Zap,          color: 'text-yellow-400',  bg: 'bg-yellow-400/10'  },
+  { name: 'Cpu',          component: Cpu,          color: 'text-cyan-400',    bg: 'bg-cyan-400/10'    },
+  { name: 'FlaskConical', component: FlaskConical, color: 'text-pink-400',    bg: 'bg-pink-400/10'    },
 ];
+
+// M3: Max character limits
+const MAX_NAME_LENGTH   = 40;
+const MAX_ROLE_LENGTH   = 60;
+const MAX_PROMPT_LENGTH = 2000;
 
 interface Props {
   onClose: () => void;
@@ -29,23 +34,26 @@ const defaultForm = {
 
 export const AgentBuilderModal = ({ onClose, onSave, editingAgent }: Props) => {
   const [form, setForm] = useState({
-    name: editingAgent?.name ?? defaultForm.name,
-    role: editingAgent?.role ?? defaultForm.role,
-    iconName: editingAgent?.iconName ?? defaultForm.iconName,
-    model: editingAgent?.model ?? defaultForm.model,
+    name:         editingAgent?.name         ?? defaultForm.name,
+    role:         editingAgent?.role         ?? defaultForm.role,
+    iconName:     editingAgent?.iconName     ?? defaultForm.iconName,
+    model:        editingAgent?.model        ?? defaultForm.model,
     systemPrompt: editingAgent?.systemPrompt ?? defaultForm.systemPrompt,
   });
 
   const [errors, setErrors] = useState<Partial<typeof form>>({});
 
-  const selectedIcon = ICONS.find((i) => i.name === form.iconName) ?? ICONS[0];
+  const selectedIcon  = ICONS.find((i) => i.name === form.iconName) ?? ICONS[0];
   const selectedModel = FREE_MODELS.find((m) => m.id === form.model) ?? FREE_MODELS[0];
 
   const validate = () => {
     const e: Partial<typeof form> = {};
-    if (!form.name.trim()) e.name = 'Name is required';
-    if (!form.role.trim()) e.role = 'Role is required';
-    if (!form.systemPrompt.trim()) e.systemPrompt = 'System prompt is required';
+    if (!form.name.trim())                                  e.name         = 'Name is required';
+    else if (form.name.length > MAX_NAME_LENGTH)            e.name         = `Max ${MAX_NAME_LENGTH} characters`;
+    if (!form.role.trim())                                  e.role         = 'Role is required';
+    else if (form.role.length > MAX_ROLE_LENGTH)            e.role         = `Max ${MAX_ROLE_LENGTH} characters`;
+    if (!form.systemPrompt.trim())                          e.systemPrompt = 'System prompt is required';
+    else if (form.systemPrompt.length > MAX_PROMPT_LENGTH)  e.systemPrompt = `Max ${MAX_PROMPT_LENGTH} characters`;
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -53,22 +61,27 @@ export const AgentBuilderModal = ({ onClose, onSave, editingAgent }: Props) => {
   const handleSave = () => {
     if (!validate()) return;
     onSave({
-      id: editingAgent?.id ?? `custom-${crypto.randomUUID()}`,
-      name: form.name.trim(),
-      role: form.role.trim(),
-      iconName: form.iconName,
-      color: selectedIcon.color,
-      bgColor: selectedIcon.bg,
-      model: form.model,
-      provider: selectedModel.provider,
+      id:         editingAgent?.id ?? `custom-${crypto.randomUUID()}`,
+      name:       form.name.trim(),
+      role:       form.role.trim(),
+      iconName:   form.iconName,
+      color:      selectedIcon.color,
+      bgColor:    selectedIcon.bg,
+      model:      form.model,
+      provider:   selectedModel.provider,
       systemPrompt: form.systemPrompt.trim(),
     });
     onClose();
   };
 
+  const promptLen = form.systemPrompt.length;
+  const promptNearLimit = promptLen > MAX_PROMPT_LENGTH * 0.85;
+  const promptOverLimit = promptLen > MAX_PROMPT_LENGTH;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
+
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0">
           <h2 className="font-bold text-white">
@@ -84,13 +97,18 @@ export const AgentBuilderModal = ({ onClose, onSave, editingAgent }: Props) => {
 
         {/* Body */}
         <div className="overflow-y-auto flex-1 p-6 space-y-5">
+
           {/* Name */}
           <div>
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block">
-              Name
-            </label>
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Name</label>
+              <span className={`text-xs ${form.name.length > MAX_NAME_LENGTH ? 'text-red-400' : 'text-slate-600'}`}>
+                {form.name.length}/{MAX_NAME_LENGTH}
+              </span>
+            </div>
             <input
               type="text"
+              maxLength={MAX_NAME_LENGTH + 10}
               placeholder="e.g. Cipher, Scout, Forge..."
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
@@ -103,11 +121,15 @@ export const AgentBuilderModal = ({ onClose, onSave, editingAgent }: Props) => {
 
           {/* Role */}
           <div>
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block">
-              Role
-            </label>
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Role</label>
+              <span className={`text-xs ${form.role.length > MAX_ROLE_LENGTH ? 'text-red-400' : 'text-slate-600'}`}>
+                {form.role.length}/{MAX_ROLE_LENGTH}
+              </span>
+            </div>
             <input
               type="text"
+              maxLength={MAX_ROLE_LENGTH + 10}
               placeholder="e.g. Security Auditor, UI/UX Expert..."
               value={form.role}
               onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
@@ -158,16 +180,21 @@ export const AgentBuilderModal = ({ onClose, onSave, editingAgent }: Props) => {
 
           {/* System Prompt */}
           <div>
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block">
-              System Prompt
-            </label>
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                System Prompt
+              </label>
+              <span className={`text-xs ${promptOverLimit ? 'text-red-400' : promptNearLimit ? 'text-amber-400' : 'text-slate-600'}`}>
+                {promptLen}/{MAX_PROMPT_LENGTH}
+              </span>
+            </div>
             <textarea
               rows={6}
               placeholder="Describe this agent's persona, expertise, and how it should respond..."
               value={form.systemPrompt}
               onChange={(e) => setForm((f) => ({ ...f, systemPrompt: e.target.value }))}
               className={`w-full bg-slate-800 border rounded-lg px-3 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none leading-relaxed ${
-                errors.systemPrompt ? 'border-red-500' : 'border-slate-700'
+                errors.systemPrompt || promptOverLimit ? 'border-red-500' : 'border-slate-700'
               }`}
             />
             {errors.systemPrompt && (

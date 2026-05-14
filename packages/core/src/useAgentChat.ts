@@ -5,17 +5,25 @@ import { streamText } from 'ai';
 import { Agent, ApiKeys, Message } from './types';
 import { INITIAL_AGENTS } from './agents';
 
-const STORAGE_KEY = 'nexus-hub:history';
-const KEYS_STORAGE_KEY = 'nexus-hub:apikeys';
-const CUSTOM_AGENTS_KEY = 'nexus-hub:custom-agents';
-const MAX_HISTORY = 40; // keep last 40 messages per agent to cap context
+const STORAGE_KEY        = 'nexus-hub:history';
+const KEYS_STORAGE_KEY   = 'nexus-hub:apikeys';
+const CUSTOM_AGENTS_KEY  = 'nexus-hub:custom-agents';
+
+// H3: Hard caps — context window sent to API, and localStorage ring-buffer
+const MAX_CONTEXT_MESSAGES = 20;   // messages sent to LLM per turn
+const MAX_STORED_MESSAGES  = 100;  // messages retained in localStorage per agent
+
+// H2: Minimum ms between sends (guards against double-tap / programmatic spam)
+const SEND_DEBOUNCE_MS = 500;
 
 // ─── Persistence helpers ─────────────────────────────────────────────────────
 
 const serializeHistory = (agents: Agent[]) =>
   agents.reduce<Record<string, { role: string; text: string; timestamp: string }[]>>(
     (acc, a) => {
-      acc[a.id] = a.history.map((m) => ({
+      // H3: Only persist the last MAX_STORED_MESSAGES per agent
+      const capped = a.history.slice(-MAX_STORED_MESSAGES);
+      acc[a.id] = capped.map((m) => ({
         role: m.role,
         text: m.text,
         timestamp: m.timestamp.toISOString(),
@@ -44,6 +52,8 @@ const loadHistory = (): Record<string, Message[]> => {
       ])
     );
   } catch {
+    // L1: Surface storage corruption rather than silently swallowing
+    console.warn('[nexus-hub] Failed to parse chat history from localStorage — resetting.');
     return {};
   }
 };
@@ -54,6 +64,7 @@ const loadApiKeys = (): ApiKeys => {
     if (!raw) return { openrouter: '', groq: '' };
     return JSON.parse(raw) as ApiKeys;
   } catch {
+    console.warn('[nexus-hub] Failed to parse API keys from localStorage — resetting.');
     return { openrouter: '', groq: '' };
   }
 };
@@ -73,6 +84,7 @@ const loadCustomAgents = (): Agent[] => {
       })),
     }));
   } catch {
+    console.warn('[nexus-hub] Failed to parse custom agents from localStorage — resetting.');
     return [];
   }
 };
@@ -91,15 +103,12 @@ function getModel(agent: Agent, keys: ApiKeys) {
     if (!keys.groq) throw new Error(
       `No Groq API key. Open Configure (⚙) and enter your Groq key.`
     );
-    const groq = createGroq({ apiKey: keys.groq });
-    return groq(agent.model);
+    return createGroq({ apiKey: keys.groq })(agent.model);
   }
-
   if (!keys.openrouter) throw new Error(
     `No OpenRouter API key. Open Configure (⚙) and enter your OpenRouter key.`
   );
-  const openrouter = createOpenRouter({ apiKey: keys.openrouter });
-  return openrouter(agent.model);
+  return createOpenRouter({ apiKey: keys.openrouter })(agent.model);
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
@@ -112,21 +121,33 @@ export const useAgentChat = () => {
   const [activeId, setActiveId] = useState<string>(INITIAL_AGENTS[0].id);
   const [apiKeys, setApiKeysState] = useState<ApiKeys>(loadApiKeys);
 
-  // Abort controller ref — lets us cancel an in-flight stream
+  // H2: Guards against double-send and programmatic spam
+  const sendingRef  = useRef(false);
+  const lastSentRef = useRef(0);
+
+  // Abort controller — cancels in-flight stream
   const abortRef = useRef<AbortController | null>(null);
 
-  // Persist history whenever agents change (skip streaming messages)
+  // Persist history whenever agents change (skip in-flight streaming messages)
   useEffect(() => {
     const stable = agents.map((a) => ({
       ...a,
       history: a.history.filter((m) => !m.streaming),
     }));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeHistory(stable)));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeHistory(stable)));
+    } catch {
+      console.warn('[nexus-hub] localStorage write failed — storage may be full.');
+    }
   }, [agents]);
 
   const setApiKeys = useCallback((keys: ApiKeys) => {
     setApiKeysState(keys);
-    localStorage.setItem(KEYS_STORAGE_KEY, JSON.stringify(keys));
+    try {
+      localStorage.setItem(KEYS_STORAGE_KEY, JSON.stringify(keys));
+    } catch {
+      console.warn('[nexus-hub] Failed to persist API keys.');
+    }
   }, []);
 
   const activeAgent = agents.find((a) => a.id === activeId) ?? agents[0];
@@ -143,7 +164,7 @@ export const useAgentChat = () => {
     setAgents((prev) => {
       const updated = [...prev, newAgent];
       const customs = updated.filter((a) => a.id.startsWith('custom-'));
-      localStorage.setItem(CUSTOM_AGENTS_KEY, JSON.stringify(customs));
+      try { localStorage.setItem(CUSTOM_AGENTS_KEY, JSON.stringify(customs)); } catch {}
       return updated;
     });
     setActiveId(newAgent.id);
@@ -155,7 +176,7 @@ export const useAgentChat = () => {
       setAgents((prev) => {
         const updated = prev.filter((a) => a.id !== id);
         const customs = updated.filter((a) => a.id.startsWith('custom-'));
-        localStorage.setItem(CUSTOM_AGENTS_KEY, JSON.stringify(customs));
+        try { localStorage.setItem(CUSTOM_AGENTS_KEY, JSON.stringify(customs)); } catch {}
         return updated;
       });
       if (activeId === id) setActiveId(INITIAL_AGENTS[0].id);
@@ -163,18 +184,27 @@ export const useAgentChat = () => {
     [activeId]
   );
 
-  // ── sendMessage (streaming via AI SDK) ────────────────────────────────────
+  // ── sendMessage ───────────────────────────────────────────────────────────
   const sendMessage = useCallback(
     async (text: string) => {
       if (!text.trim()) return;
 
-      // Cancel any existing in-flight stream
+      // H2: Send lock — blocks overlapping sends
+      if (sendingRef.current) return;
+
+      // H2: Debounce — minimum 500ms between sends
+      const now = Date.now();
+      if (now - lastSentRef.current < SEND_DEBOUNCE_MS) return;
+      lastSentRef.current = now;
+
+      sendingRef.current = true;
+
+      // Cancel any previous in-flight stream
       abortRef.current?.abort();
       const abort = new AbortController();
       abortRef.current = abort;
 
       const userMessage: Message = { role: 'user', text, timestamp: new Date() };
-      // Placeholder streaming message — will be updated chunk by chunk
       const streamingMsg: Message = {
         role: 'agent',
         text: '',
@@ -188,7 +218,7 @@ export const useAgentChat = () => {
             ? {
                 ...a,
                 status: 'streaming',
-                history: [...a.history.slice(-MAX_HISTORY), userMessage, streamingMsg],
+                history: [...a.history, userMessage, streamingMsg],
               }
             : a
         )
@@ -198,8 +228,11 @@ export const useAgentChat = () => {
         const agent = agents.find((a) => a.id === activeId)!;
         const model = getModel(agent, apiKeys);
 
-        // Build messages array for the AI SDK (exclude the empty streaming placeholder)
-        const history = agent.history.slice(-MAX_HISTORY).filter((m) => !m.streaming);
+        // H3: Only send last MAX_CONTEXT_MESSAGES to the API
+        const history = agent.history
+          .slice(-MAX_CONTEXT_MESSAGES)
+          .filter((m) => !m.streaming);
+
         const sdkMessages = [
           ...history.map((m) => ({
             role: (m.role === 'agent' ? 'assistant' : 'user') as 'user' | 'assistant',
@@ -216,7 +249,6 @@ export const useAgentChat = () => {
           abortSignal: abort.signal,
         });
 
-        // Stream chunks into the placeholder message
         let accumulated = '';
         for await (const chunk of result.textStream) {
           if (abort.signal.aborted) break;
@@ -236,7 +268,6 @@ export const useAgentChat = () => {
           );
         }
 
-        // Finalise — mark message as complete
         setAgents((prev) =>
           prev.map((a) =>
             a.id === activeId
@@ -251,8 +282,10 @@ export const useAgentChat = () => {
           )
         );
       } catch (err) {
-        if ((err as Error).name === 'AbortError') return; // user cancelled — silent
-
+        if ((err as Error).name === 'AbortError') {
+          sendingRef.current = false;
+          return;
+        }
         const errorMsg = err instanceof Error ? err.message : 'Unknown error occurred';
         setAgents((prev) =>
           prev.map((a) =>
@@ -269,6 +302,8 @@ export const useAgentChat = () => {
               : a
           )
         );
+      } finally {
+        sendingRef.current = false;
       }
     },
     [activeId, agents, apiKeys]
