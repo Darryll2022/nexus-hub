@@ -1,54 +1,87 @@
-import { useState, KeyboardEvent } from 'react';
-import { Send } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Send, Square } from 'lucide-react';
 
 interface Props {
   onSend: (text: string) => void;
+  onStop?: () => void;
   disabled?: boolean;
+  streaming?: boolean;
 }
 
-export const ChatInput = ({ onSend, disabled }: Props) => {
-  const [input, setInput] = useState('');
+export const ChatInput = ({ onSend, onStop, disabled = false, streaming = false }: Props) => {
+  const [value, setValue] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const handleSend = () => {
-    if (!input.trim() || disabled) return;
-    onSend(input.trim());
-    setInput('');
+  // Auto-resize textarea
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [value]);
+
+  const submit = () => {
+    const trimmed = value.trim();
+    if (!trimmed || disabled || streaming) return;
+    onSend(trimmed);
+    setValue('');
   };
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      if (streaming && onStop) {
+        onStop();
+      } else {
+        submit();
+      }
+    }
+    if (e.key === 'Escape' && streaming && onStop) {
+      onStop();
     }
   };
 
   return (
-    <div className="p-4 border-t border-slate-800 bg-slate-900/60 backdrop-blur-md">
-      <div className="flex gap-3 items-end max-w-4xl mx-auto">
+    <div className="p-4 border-t border-slate-800 bg-slate-950">
+      <div className="max-w-3xl mx-auto flex gap-3 items-end">
         <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Message... (Enter to send, Shift+Enter for new line)"
+          ref={textareaRef}
           rows={1}
           maxLength={4000}
-          disabled={disabled}
-          className="flex-1 bg-slate-800 border border-slate-700 text-slate-200 placeholder-slate-500 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50 min-h-[48px] max-h-40 overflow-y-auto"
-          style={{ height: 'auto' }}
-          onInput={(e) => {
-            const el = e.currentTarget;
-            el.style.height = 'auto';
-            el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-          }}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleKey}
+          disabled={disabled && !streaming}
+          placeholder={streaming ? 'Streaming… (Esc or ↵ to stop)' : 'Message an agent… (⇧↵ for new line)'}
+          className="flex-1 bg-slate-800 border border-slate-700 focus:border-indigo-500 text-slate-200 placeholder-slate-500 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors leading-relaxed"
         />
-        <button
-          onClick={handleSend}
-          disabled={!input.trim() || disabled}
-          className="p-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-xl transition-colors shrink-0"
-        >
-          <Send size={18} />
-        </button>
+        {streaming ? (
+          <button
+            onClick={onStop}
+            className="w-10 h-10 rounded-xl bg-red-500/20 hover:bg-red-500/40 text-red-400 flex items-center justify-center shrink-0 transition-colors"
+            title="Stop generating (Esc)"
+          >
+            <Square size={16} fill="currentColor" />
+          </button>
+        ) : (
+          <button
+            onClick={submit}
+            disabled={!value.trim() || disabled}
+            className="w-10 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed text-white flex items-center justify-center shrink-0 transition-colors"
+            title="Send (↵)"
+          >
+            <Send size={16} />
+          </button>
+        )}
       </div>
+      <p className="text-center text-slate-600 text-xs mt-2">
+        {value.length > 0 && (
+          <span className={value.length > 3800 ? 'text-amber-500' : ''}>
+            {value.length}/4000 ·{' '}
+          </span>
+        )}
+        Shift+Enter for new line
+      </p>
     </div>
   );
 };

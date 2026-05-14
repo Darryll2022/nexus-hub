@@ -1,27 +1,23 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { createGroq } from '@ai-sdk/groq';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import { streamText } from 'ai';
 import { Agent, ApiKeys, Message } from '../types';
 import { INITIAL_AGENTS } from '../constants/agents';
 
 const STORAGE_KEY = 'nexus-hub:history';
 const KEYS_STORAGE_KEY = 'nexus-hub:apikeys';
 const CUSTOM_AGENTS_KEY = 'nexus-hub:custom-agents';
+const MAX_HISTORY = 40; // keep last 40 messages per agent to cap context
 
-const getApiEndpoint = (provider: string) =>
-  provider === 'groq'
-    ? 'https://api.groq.com/openai/v1/chat/completions'
-    : 'https://openrouter.ai/api/v1/chat/completions';
+// ─── Persistence helpers ─────────────────────────────────────────────────────
 
-const getApiKey = (provider: string, keys: ApiKeys): string => {
-  if (provider === 'groq') return keys.groq || '';
-  return keys.openrouter || '';
-};
-
-// Serialize/deserialize Message dates
 const serializeHistory = (agents: Agent[]) =>
   agents.reduce<Record<string, { role: string; text: string; timestamp: string }[]>>(
     (acc, a) => {
       acc[a.id] = a.history.map((m) => ({
-        ...m,
+        role: m.role,
+        text: m.text,
         timestamp: m.timestamp.toISOString(),
       }));
       return acc;
@@ -41,8 +37,8 @@ const loadHistory = (): Record<string, Message[]> => {
       Object.entries(parsed).map(([id, msgs]) => [
         id,
         msgs.map((m) => ({
-          ...m,
           role: m.role as Message['role'],
+          text: m.text,
           timestamp: new Date(m.timestamp),
         })),
       ])
@@ -67,7 +63,6 @@ const loadCustomAgents = (): Agent[] => {
     const raw = localStorage.getItem(CUSTOM_AGENTS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as Agent[];
-    // Re-hydrate history timestamps
     const savedHistory = loadHistory();
     return parsed.map((a) => ({
       ...a,
@@ -89,6 +84,26 @@ const hydrateAgents = (base: Agent[]): Agent[] => {
   );
 };
 
+// ─── Provider factory ────────────────────────────────────────────────────────
+
+function getModel(agent: Agent, keys: ApiKeys) {
+  if (agent.provider === 'groq') {
+    if (!keys.groq) throw new Error(
+      `No Groq API key. Open Configure (⚙) and enter your Groq key.`
+    );
+    const groq = createGroq({ apiKey: keys.groq });
+    return groq(agent.model);
+  }
+
+  if (!keys.openrouter) throw new Error(
+    `No OpenRouter API key. Open Configure (⚙) and enter your OpenRouter key.`
+  );
+  const openrouter = createOpenRouter({ apiKey: keys.openrouter });
+  return openrouter(agent.model);
+}
+
+// ─── Hook ────────────────────────────────────────────────────────────────────
+
 export const useAgentChat = () => {
   const [agents, setAgents] = useState<Agent[]>(() => [
     ...hydrateAgents(INITIAL_AGENTS),
@@ -97,9 +112,16 @@ export const useAgentChat = () => {
   const [activeId, setActiveId] = useState<string>(INITIAL_AGENTS[0].id);
   const [apiKeys, setApiKeysState] = useState<ApiKeys>(loadApiKeys);
 
-  // Persist history whenever agents change
+  // Abort controller ref — lets us cancel an in-flight stream
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Persist history whenever agents change (skip streaming messages)
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeHistory(agents)));
+    const stable = agents.map((a) => ({
+      ...a,
+      history: a.history.filter((m) => !m.streaming),
+    }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeHistory(stable)));
   }, [agents]);
 
   const setApiKeys = useCallback((keys: ApiKeys) => {
@@ -109,6 +131,7 @@ export const useAgentChat = () => {
 
   const activeAgent = agents.find((a) => a.id === activeId) ?? agents[0];
 
+  // ── addAgent ──────────────────────────────────────────────────────────────
   const addAgent = useCallback((agentDef: Omit<Agent, 'status' | 'history'>) => {
     const greeting: Message = {
       role: 'agent',
@@ -119,15 +142,14 @@ export const useAgentChat = () => {
 
     setAgents((prev) => {
       const updated = [...prev, newAgent];
-      // Persist custom agents (strip history — that's in STORAGE_KEY)
       const customs = updated.filter((a) => a.id.startsWith('custom-'));
       localStorage.setItem(CUSTOM_AGENTS_KEY, JSON.stringify(customs));
       return updated;
     });
-
     setActiveId(newAgent.id);
   }, []);
 
+  // ── deleteAgent ───────────────────────────────────────────────────────────
   const deleteAgent = useCallback(
     (id: string) => {
       setAgents((prev) => {
@@ -141,77 +163,109 @@ export const useAgentChat = () => {
     [activeId]
   );
 
+  // ── sendMessage (streaming via AI SDK) ────────────────────────────────────
   const sendMessage = useCallback(
     async (text: string) => {
       if (!text.trim()) return;
 
+      // Cancel any existing in-flight stream
+      abortRef.current?.abort();
+      const abort = new AbortController();
+      abortRef.current = abort;
+
       const userMessage: Message = { role: 'user', text, timestamp: new Date() };
+      // Placeholder streaming message — will be updated chunk by chunk
+      const streamingMsg: Message = {
+        role: 'agent',
+        text: '',
+        timestamp: new Date(),
+        streaming: true,
+      };
 
       setAgents((prev) =>
         prev.map((a) =>
           a.id === activeId
-            ? { ...a, status: 'thinking', history: [...a.history, userMessage] }
+            ? {
+                ...a,
+                status: 'streaming',
+                history: [...a.history.slice(-MAX_HISTORY), userMessage, streamingMsg],
+              }
             : a
         )
       );
 
       try {
         const agent = agents.find((a) => a.id === activeId)!;
-        const apiKey = getApiKey(agent.provider, apiKeys);
+        const model = getModel(agent, apiKeys);
 
-        if (!apiKey) {
-          throw new Error(
-            `No API key for ${agent.provider}. Open Configure (⚙) and enter your ${agent.provider === 'groq' ? 'Groq' : 'OpenRouter'} API key.`
+        // Build messages array for the AI SDK (exclude the empty streaming placeholder)
+        const history = agent.history.slice(-MAX_HISTORY).filter((m) => !m.streaming);
+        const sdkMessages = [
+          ...history.map((m) => ({
+            role: (m.role === 'agent' ? 'assistant' : 'user') as 'user' | 'assistant',
+            content: m.text,
+          })),
+          { role: 'user' as const, content: text },
+        ];
+
+        const result = streamText({
+          model,
+          system: agent.systemPrompt,
+          messages: sdkMessages,
+          temperature: 0.7,
+          abortSignal: abort.signal,
+        });
+
+        // Stream chunks into the placeholder message
+        let accumulated = '';
+        for await (const chunk of result.textStream) {
+          if (abort.signal.aborted) break;
+          accumulated += chunk;
+          const snapshot = accumulated;
+          setAgents((prev) =>
+            prev.map((a) =>
+              a.id === activeId
+                ? {
+                    ...a,
+                    history: a.history.map((m) =>
+                      m.streaming ? { ...m, text: snapshot } : m
+                    ),
+                  }
+                : a
+            )
           );
         }
 
-        const messages = [
-          { role: 'system', content: agent.systemPrompt },
-          ...agent.history.map((m) => ({
-            role: m.role === 'agent' ? 'assistant' : 'user',
-            content: m.text,
-          })),
-          { role: 'user', content: text },
-        ];
-
-        const res = await fetch(getApiEndpoint(agent.provider), {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://nexus-hub.vercel.app',
-            'X-Title': 'Nexus Hub',
-          },
-          body: JSON.stringify({ model: agent.model, messages, temperature: 0.7 }),
-        });
-
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error?.message || `API error ${res.status}`);
-        }
-
-        const data = await res.json();
-        const replyText: string = data.choices[0].message.content;
-        const agentMessage: Message = { role: 'agent', text: replyText, timestamp: new Date() };
-
+        // Finalise — mark message as complete
         setAgents((prev) =>
           prev.map((a) =>
             a.id === activeId
-              ? { ...a, status: 'idle', history: [...a.history, agentMessage] }
+              ? {
+                  ...a,
+                  status: 'idle',
+                  history: a.history.map((m) =>
+                    m.streaming ? { ...m, streaming: false } : m
+                  ),
+                }
               : a
           )
         );
       } catch (err) {
+        if ((err as Error).name === 'AbortError') return; // user cancelled — silent
+
         const errorMsg = err instanceof Error ? err.message : 'Unknown error occurred';
-        const errorMessage: Message = {
-          role: 'agent',
-          text: `⚠️ ${errorMsg}`,
-          timestamp: new Date(),
-        };
         setAgents((prev) =>
           prev.map((a) =>
             a.id === activeId
-              ? { ...a, status: 'error', history: [...a.history, errorMessage] }
+              ? {
+                  ...a,
+                  status: 'error',
+                  history: a.history.map((m) =>
+                    m.streaming
+                      ? { ...m, streaming: false, text: `⚠️ ${errorMsg}` }
+                      : m
+                  ),
+                }
               : a
           )
         );
@@ -220,10 +274,30 @@ export const useAgentChat = () => {
     [activeId, agents, apiKeys]
   );
 
+  // ── stopStream ────────────────────────────────────────────────────────────
+  const stopStream = useCallback(() => {
+    abortRef.current?.abort();
+    setAgents((prev) =>
+      prev.map((a) =>
+        a.id === activeId
+          ? {
+              ...a,
+              status: 'idle',
+              history: a.history.map((m) =>
+                m.streaming ? { ...m, streaming: false } : m
+              ),
+            }
+          : a
+      )
+    );
+  }, [activeId]);
+
+  // ── updateAgent ───────────────────────────────────────────────────────────
   const updateAgent = useCallback((id: string, updates: Partial<Agent>) => {
     setAgents((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
   }, []);
 
+  // ── clearHistory ──────────────────────────────────────────────────────────
   const clearHistory = useCallback((id: string) => {
     const base = INITIAL_AGENTS.find((ia) => ia.id === id);
     const greeting: Message = base
@@ -245,6 +319,7 @@ export const useAgentChat = () => {
     apiKeys,
     setApiKeys,
     sendMessage,
+    stopStream,
     updateAgent,
     clearHistory,
     addAgent,

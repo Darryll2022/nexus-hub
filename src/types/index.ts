@@ -1,38 +1,6 @@
-import { LucideIcon } from 'lucide-react';
+// Re-export from shared core — single source of truth
+export * from '../../packages/core/src/types';
 
-export type AgentStatus = 'idle' | 'thinking' | 'error';
-export type MessageRole = 'user' | 'agent';
-export type ApiProvider = 'openrouter' | 'groq';
-
-export interface Message {
-  role: MessageRole;
-  text: string;
-  timestamp: Date;
-}
-
-export interface Agent {
-  id: string;
-  name: string;
-  role: string;
-  iconName: string;
-  color: string;
-  bgColor: string;
-  status: AgentStatus;
-  model: string;
-  provider: ApiProvider;
-  systemPrompt: string;
-  history: Message[];
-}
-
-export interface ApiKeys {
-  openrouter: string;
-  groq: string;
-}
-
-export interface ModelOption {
-  id: string;
-  name: string;
-  provider: ApiProvider;
-}
-
+// Icon map type (web-only — uses lucide-react)
+import type { LucideIcon } from 'lucide-react';
 export type IconMap = Record<string, LucideIcon>;

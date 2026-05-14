@@ -20,6 +20,7 @@ const App = () => {
     apiKeys,
     setApiKeys,
     sendMessage,
+    stopStream,
     updateAgent,
     clearHistory,
     addAgent,
@@ -28,7 +29,10 @@ const App = () => {
 
   const handleSaveAgent = (agentDef: Omit<Agent, 'status' | 'history'>) => {
     addAgent(agentDef);
+    setShowBuilder(false);
   };
+
+  const isStreaming = activeAgent.status === 'streaming';
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-200 font-sans overflow-hidden">
@@ -49,10 +53,12 @@ const App = () => {
           showSettings={showSettings}
           onToggleSettings={() => setShowSettings((v) => !v)}
         />
-        <ChatArea agent={activeAgent} />
+        <ChatArea agent={activeAgent} onStop={stopStream} />
         <ChatInput
           onSend={sendMessage}
+          onStop={stopStream}
           disabled={activeAgent.status === 'thinking'}
+          streaming={isStreaming}
         />
       </div>
 
