@@ -44,7 +44,7 @@ export const AgentSidebar = ({ agents, activeId, onSelect, onNewAgent, onDeleteA
                   <p className="font-medium text-slate-100 text-sm truncate pr-2">{agent.name}</p>
                   <div
                     className={`w-2 h-2 rounded-full shrink-0 ${
-                      agent.status === 'thinking'
+                      agent.status === 'thinking' || agent.status === 'streaming'
                         ? 'bg-amber-500 animate-pulse'
                         : agent.status === 'error'
                         ? 'bg-red-500'

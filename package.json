@@ -1,29 +1,33 @@
 {
-  "name": "nexus-hub-root",
+  "name": "nexus-hub",
   "private": true,
   "version": "0.1.0",
-  "workspaces": [
-    "packages/core",
-    "packages/mobile"
-  ],
+  "type": "module",
   "scripts": {
-    "web": "cd packages/web && npm run dev",
-    "mobile": "cd packages/mobile && expo start"
-  },
-  "devDependencies": {
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "@types/react-syntax-highlighter": "^15.5.13",
-    "esbuild": "^0.25.12",
-    "lucide-react": "^1.16.0",
-    "react-markdown": "^10.1.0",
-    "react-syntax-highlighter": "^16.1.1",
-    "remark-gfm": "^4.0.1",
-    "vite": "^6.4.2"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@ai-sdk/groq": "^3.0.39",
     "@openrouter/ai-sdk-provider": "^2.9.0",
-    "ai": "^6.0.182"
+    "ai": "^6.0.182",
+    "lucide-react": "^0.378.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "react-syntax-highlighter": "^16.1.1",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.0",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.3",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.10"
   }
 }
