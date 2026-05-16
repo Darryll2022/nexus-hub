@@ -42,8 +42,8 @@ export const ChatInput = ({ onSend, onStop, disabled = false, streaming = false 
   };
 
   return (
-    <div className="p-4 border-t border-slate-800 bg-slate-950">
-      <div className="max-w-3xl mx-auto flex gap-3 items-end">
+    <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-slate-800 bg-slate-950">
+      <div className="max-w-3xl mx-auto flex gap-2 md:gap-3 items-end">
         <textarea
           ref={textareaRef}
           rows={1}
