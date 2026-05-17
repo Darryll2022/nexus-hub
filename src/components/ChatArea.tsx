@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Bot, Wrench, Terminal, BookOpen, User } from 'lucide-react';
 import { Agent, Message, IconMap } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { agentHexColor } from '../utils/agentColor';
 
 const ICON_MAP: IconMap = { Wrench, Terminal, BookOpen };
 
@@ -31,7 +32,7 @@ const MessageBubble = ({ msg, agent }: { msg: Message; agent: Agent }) => {
         className={`px-4 py-3 rounded-2xl text-sm leading-relaxed max-w-[80%] ${
           isUser
             ? 'bg-indigo-600 text-white rounded-tr-sm whitespace-pre-wrap'
-            : 'bg-slate-800 border border-slate-700 text-slate-200 rounded-tl-sm'
+            : 'bg-slate-800/80 border border-slate-700 text-slate-200 rounded-tl-sm backdrop-blur-sm'
         }`}
       >
         {isUser ? (
@@ -41,10 +42,8 @@ const MessageBubble = ({ msg, agent }: { msg: Message; agent: Agent }) => {
             {msg.text ? (
               <MarkdownRenderer content={msg.text} />
             ) : (
-              // Empty streaming message — show cursor only
               msg.streaming && <StreamingCursor />
             )}
-            {/* Append cursor while streaming */}
             {msg.streaming && msg.text && <StreamingCursor />}
           </>
         )}
@@ -54,26 +53,36 @@ const MessageBubble = ({ msg, agent }: { msg: Message; agent: Agent }) => {
 };
 
 export const ChatArea = ({ agent, onStop }: Props) => {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const bottomRef  = useRef<HTMLDivElement>(null);
   const isStreaming = agent.status === 'streaming';
+  const hex         = agentHexColor(agent.bgColor);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [agent.history]);
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-5">
+    <div
+      className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5 relative transition-all duration-700"
+      style={{
+        // Tier 1: ambient radial wash — shifts colour per active agent
+        background: `
+          radial-gradient(ellipse 80% 40% at 50% 0%, ${hex}18 0%, transparent 70%),
+          radial-gradient(ellipse 60% 30% at 80% 100%, ${hex}0d 0%, transparent 60%)
+        `,
+      }}
+    >
       {agent.history.map((msg, idx) => (
         <MessageBubble key={idx} msg={msg} agent={agent} />
       ))}
 
-      {/* Thinking dots — only before first chunk arrives */}
+      {/* Thinking dots */}
       {agent.status === 'thinking' && (
         <div className="flex gap-3 max-w-3xl">
           <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${agent.bgColor}`}>
             <Bot className={agent.color} size={14} />
           </div>
-          <div className="px-4 py-3 rounded-2xl bg-slate-800 border border-slate-700 rounded-tl-sm">
+          <div className="px-4 py-3 rounded-2xl bg-slate-800/80 border border-slate-700 rounded-tl-sm backdrop-blur-sm">
             <div className="flex gap-1 items-center h-5">
               <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:0ms]" />
               <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:150ms]" />
@@ -83,7 +92,7 @@ export const ChatArea = ({ agent, onStop }: Props) => {
         </div>
       )}
 
-      {/* Stop button — visible while streaming */}
+      {/* Stop button */}
       {isStreaming && onStop && (
         <div className="flex justify-center">
           <button

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Bot, Wrench, Terminal, BookOpen, Zap, Cpu, FlaskConical } from 'lucide-react';
 import { Agent } from '../types';
 import { FREE_MODELS } from '../constants/agents';
+import { agentHexColor } from '../utils/agentColor';
 
 const ICONS = [
   { name: 'Bot',          component: Bot,          color: 'text-violet-400',  bg: 'bg-violet-400/10'  },
@@ -13,7 +14,6 @@ const ICONS = [
   { name: 'FlaskConical', component: FlaskConical, color: 'text-pink-400',    bg: 'bg-pink-400/10'    },
 ];
 
-// M3: Max character limits
 const MAX_NAME_LENGTH   = 40;
 const MAX_ROLE_LENGTH   = 60;
 const MAX_PROMPT_LENGTH = 2000;
@@ -25,11 +25,7 @@ interface Props {
 }
 
 const defaultForm = {
-  name: '',
-  role: '',
-  iconName: 'Bot',
-  model: FREE_MODELS[0].id,
-  systemPrompt: '',
+  name: '', role: '', iconName: 'Bot', model: FREE_MODELS[0].id, systemPrompt: '',
 };
 
 export const AgentBuilderModal = ({ onClose, onSave, editingAgent }: Props) => {
@@ -40,20 +36,20 @@ export const AgentBuilderModal = ({ onClose, onSave, editingAgent }: Props) => {
     model:        editingAgent?.model        ?? defaultForm.model,
     systemPrompt: editingAgent?.systemPrompt ?? defaultForm.systemPrompt,
   });
-
   const [errors, setErrors] = useState<Partial<typeof form>>({});
 
   const selectedIcon  = ICONS.find((i) => i.name === form.iconName) ?? ICONS[0];
   const selectedModel = FREE_MODELS.find((m) => m.id === form.model) ?? FREE_MODELS[0];
+  const accentHex     = agentHexColor(selectedIcon.bg);
 
   const validate = () => {
     const e: Partial<typeof form> = {};
-    if (!form.name.trim())                                  e.name         = 'Name is required';
-    else if (form.name.length > MAX_NAME_LENGTH)            e.name         = `Max ${MAX_NAME_LENGTH} characters`;
-    if (!form.role.trim())                                  e.role         = 'Role is required';
-    else if (form.role.length > MAX_ROLE_LENGTH)            e.role         = `Max ${MAX_ROLE_LENGTH} characters`;
-    if (!form.systemPrompt.trim())                          e.systemPrompt = 'System prompt is required';
-    else if (form.systemPrompt.length > MAX_PROMPT_LENGTH)  e.systemPrompt = `Max ${MAX_PROMPT_LENGTH} characters`;
+    if (!form.name.trim())                                 e.name         = 'Name is required';
+    else if (form.name.length > MAX_NAME_LENGTH)           e.name         = `Max ${MAX_NAME_LENGTH} characters`;
+    if (!form.role.trim())                                 e.role         = 'Role is required';
+    else if (form.role.length > MAX_ROLE_LENGTH)           e.role         = `Max ${MAX_ROLE_LENGTH} characters`;
+    if (!form.systemPrompt.trim())                         e.systemPrompt = 'System prompt is required';
+    else if (form.systemPrompt.length > MAX_PROMPT_LENGTH) e.systemPrompt = `Max ${MAX_PROMPT_LENGTH} characters`;
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -61,20 +57,20 @@ export const AgentBuilderModal = ({ onClose, onSave, editingAgent }: Props) => {
   const handleSave = () => {
     if (!validate()) return;
     onSave({
-      id:         editingAgent?.id ?? `custom-${crypto.randomUUID()}`,
-      name:       form.name.trim(),
-      role:       form.role.trim(),
-      iconName:   form.iconName,
-      color:      selectedIcon.color,
-      bgColor:    selectedIcon.bg,
-      model:      form.model,
-      provider:   selectedModel.provider,
+      id:           editingAgent?.id ?? `custom-${crypto.randomUUID()}`,
+      name:         form.name.trim(),
+      role:         form.role.trim(),
+      iconName:     form.iconName,
+      color:        selectedIcon.color,
+      bgColor:      selectedIcon.bg,
+      model:        form.model,
+      provider:     selectedModel.provider,
       systemPrompt: form.systemPrompt.trim(),
     });
     onClose();
   };
 
-  const promptLen = form.systemPrompt.length;
+  const promptLen       = form.systemPrompt.length;
   const promptNearLimit = promptLen > MAX_PROMPT_LENGTH * 0.85;
   const promptOverLimit = promptLen > MAX_PROMPT_LENGTH;
 
@@ -84,13 +80,8 @@ export const AgentBuilderModal = ({ onClose, onSave, editingAgent }: Props) => {
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0">
-          <h2 className="font-bold text-white">
-            {editingAgent ? 'Edit Agent' : 'New Agent'}
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-          >
+          <h2 className="font-bold text-white">{editingAgent ? 'Edit Agent' : 'New Agent'}</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors">
             <X size={16} />
           </button>
         </div>
@@ -112,9 +103,7 @@ export const AgentBuilderModal = ({ onClose, onSave, editingAgent }: Props) => {
               placeholder="e.g. Cipher, Scout, Forge..."
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              className={`w-full bg-slate-800 border rounded-lg px-3 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
-                errors.name ? 'border-red-500' : 'border-slate-700'
-              }`}
+              className={`w-full bg-slate-800 border rounded-lg px-3 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 ${errors.name ? 'border-red-500' : 'border-slate-700'}`}
             />
             {errors.name && <p className="text-red-400 text-xs mt-1">{errors.name}</p>}
           </div>
@@ -133,18 +122,14 @@ export const AgentBuilderModal = ({ onClose, onSave, editingAgent }: Props) => {
               placeholder="e.g. Security Auditor, UI/UX Expert..."
               value={form.role}
               onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
-              className={`w-full bg-slate-800 border rounded-lg px-3 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
-                errors.role ? 'border-red-500' : 'border-slate-700'
-              }`}
+              className={`w-full bg-slate-800 border rounded-lg px-3 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 ${errors.role ? 'border-red-500' : 'border-slate-700'}`}
             />
             {errors.role && <p className="text-red-400 text-xs mt-1">{errors.role}</p>}
           </div>
 
           {/* Icon picker */}
           <div>
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">
-              Icon
-            </label>
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Icon</label>
             <div className="flex gap-2 flex-wrap">
               {ICONS.map(({ name, component: Icon, color, bg }) => (
                 <button
@@ -164,9 +149,7 @@ export const AgentBuilderModal = ({ onClose, onSave, editingAgent }: Props) => {
 
           {/* Model */}
           <div>
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block">
-              Model
-            </label>
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block">Model</label>
             <select
               value={form.model}
               onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
@@ -181,9 +164,7 @@ export const AgentBuilderModal = ({ onClose, onSave, editingAgent }: Props) => {
           {/* System Prompt */}
           <div>
             <div className="flex justify-between items-center mb-1.5">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                System Prompt
-              </label>
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">System Prompt</label>
               <span className={`text-xs ${promptOverLimit ? 'text-red-400' : promptNearLimit ? 'text-amber-400' : 'text-slate-600'}`}>
                 {promptLen}/{MAX_PROMPT_LENGTH}
               </span>
@@ -193,49 +174,66 @@ export const AgentBuilderModal = ({ onClose, onSave, editingAgent }: Props) => {
               placeholder="Describe this agent's persona, expertise, and how it should respond..."
               value={form.systemPrompt}
               onChange={(e) => setForm((f) => ({ ...f, systemPrompt: e.target.value }))}
-              className={`w-full bg-slate-800 border rounded-lg px-3 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none leading-relaxed ${
-                errors.systemPrompt || promptOverLimit ? 'border-red-500' : 'border-slate-700'
-              }`}
+              className={`w-full bg-slate-800 border rounded-lg px-3 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none leading-relaxed ${errors.systemPrompt || promptOverLimit ? 'border-red-500' : 'border-slate-700'}`}
             />
-            {errors.systemPrompt && (
-              <p className="text-red-400 text-xs mt-1">{errors.systemPrompt}</p>
-            )}
+            {errors.systemPrompt && <p className="text-red-400 text-xs mt-1">{errors.systemPrompt}</p>}
           </div>
 
-          {/* Preview */}
-          <div className="rounded-xl bg-slate-800/50 border border-slate-700 p-4">
-            <p className="text-xs text-slate-500 mb-2 font-medium">Preview</p>
-            <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-lg ${selectedIcon.bg}`}>
-                <selectedIcon.component className={selectedIcon.color} size={18} />
+          {/* Tier 3: Rich gradient agent card preview */}
+          <div className="rounded-xl overflow-hidden border border-slate-700 shadow-lg">
+            {/* Hero strip with ambient glow */}
+            <div
+              className="h-16 w-full flex items-end px-4 pb-3 relative"
+              style={{
+                background: `linear-gradient(135deg, ${accentHex}33 0%, ${accentHex}11 100%)`,
+                borderBottom: `1px solid ${accentHex}33`,
+              }}
+            >
+              {/* Decorative glow orb */}
+              <div
+                className="absolute top-1 right-3 w-14 h-14 rounded-full blur-xl opacity-30 pointer-events-none"
+                style={{ background: accentHex }}
+              />
+              <div className={`p-2.5 rounded-xl ${selectedIcon.bg} border border-white/10 shadow-md z-10`}>
+                <selectedIcon.component className={selectedIcon.color} size={20} />
               </div>
-              <div>
-                <p className="text-sm font-semibold text-white">
-                  {form.name || 'Agent Name'}
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest ml-auto z-10">Preview</p>
+            </div>
+            {/* Card body */}
+            <div className="bg-slate-800/60 px-4 py-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-white truncate">
+                  {form.name || <span className="text-slate-500 font-normal italic">Agent Name</span>}
                 </p>
-                <p className="text-xs text-slate-400">
-                  {form.role || 'Agent Role'} · {selectedModel.name.split('(')[1]?.replace(')', '') ?? selectedModel.name}
+                <p className="text-xs text-slate-400 truncate">
+                  {form.role
+                    ? `${form.role} · ${selectedModel.name.split('(')[1]?.replace(')', '') ?? selectedModel.name}`
+                    : <span className="italic text-slate-600">Role · Model</span>
+                  }
                 </p>
               </div>
+              <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Idle" />
             </div>
           </div>
+
         </div>
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-slate-800 flex gap-3 justify-end shrink-0">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+            className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
-            className="px-5 py-2 text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"
+            className="px-5 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors shadow-md"
           >
             {editingAgent ? 'Save Changes' : 'Create Agent'}
           </button>
         </div>
+
       </div>
     </div>
   );
