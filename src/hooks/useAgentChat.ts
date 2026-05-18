@@ -99,6 +99,54 @@ const hydrateAgents = (base: Agent[]): Agent[] => {
 // ─── Provider factory ────────────────────────────────────────────────────────
 
 // RCA fix (2026-05-18): createOpenRouter must include appUrl + appName.
+// ── Error Humanizer ───────────────────────────────────────────────────────────
+// Converts raw API error objects/strings into readable messages.
+// Groq rate-limit errors arrive as JSON strings in err.message.
+// OpenRouter errors arrive as structured APICallError messages.
+function humanizeError(err: unknown): string {
+  if (!(err instanceof Error)) return 'Unknown error occurred.';
+
+  const raw = err.message;
+
+  // Attempt to parse Groq-style rate-limit JSON embedded in the message
+  // e.g. '{"type":"exceeded_limit","resetsAt":1779091800,...}'
+  const jsonStart = raw.indexOf('{');
+  if (jsonStart >= 0) {
+    try {
+      // Groq sometimes concatenates multiple JSON objects separated by newlines — grab the first
+      const firstJson = raw.slice(jsonStart).split('\n')[0].replace(/,$/, '');
+      const parsed = JSON.parse(firstJson);
+
+      if (parsed.type === 'exceeded_limit' || parsed.status === 'exceeded_limit') {
+        const resetsAt: number = parsed.resetsAt ?? parsed.resets_at;
+        if (resetsAt) {
+          const resetDate = new Date(resetsAt * 1000);
+          const formatted = resetDate.toLocaleString('en-SG', {
+            timeZone: 'Asia/Singapore',
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          });
+          return `Rate limit reached. Groq quota resets at ${formatted} (SGT). Try again then, or enter a paid key.`;
+        }
+        return 'Rate limit reached. Please wait before sending again.';
+      }
+
+      if (parsed.error?.message) return parsed.error.message;
+      if (parsed.message) return parsed.message;
+    } catch {
+      // Not JSON — fall through to raw message
+    }
+  }
+
+  // OpenRouter / generic API errors — strip noisy prefixes
+  const cleaned = raw
+    .replace(/^AI_APICallError:\s*/i, '')
+    .replace(/^Error:\s*/i, '')
+    .trim();
+
+  return cleaned || 'An unexpected error occurred.';
+}
+
 // OpenRouter free models (and some paid ones) require HTTP-Referer to be set.
 // Without it the API returns 403. The raw-fetch implementation had this header
 // (Phase A security fix) but it was silently dropped during the Vercel AI SDK
@@ -143,6 +191,13 @@ export const useAgentChat = () => {
   // Abort controller — cancels in-flight stream
   const abortRef = useRef<AbortController | null>(null);
 
+  // RCA-002: Stale-closure fix — always read current values inside sendMessage.
+  // useCallback deps include apiKeys/activeId, but React batches state updates,
+  // so a sendMessage called in the same tick as setApiKeys reads the old snapshot.
+  // Refs are always current regardless of closure age.
+  const apiKeysRef  = useRef<ApiKeys>(apiKeys);
+  const activeIdRef = useRef<string>(activeId);
+
   // Persist history whenever agents change (skip in-flight streaming messages)
   useEffect(() => {
     const stable = agents.map((a) => ({
@@ -164,6 +219,10 @@ export const useAgentChat = () => {
       console.warn('[nexus-hub] Failed to persist API keys.');
     }
   }, []);
+
+  // Keep refs current — must run before sendMessage is called
+  apiKeysRef.current  = apiKeys;
+  activeIdRef.current = activeId;
 
   const activeAgent = agents.find((a) => a.id === activeId) ?? agents[0];
 
@@ -214,6 +273,10 @@ export const useAgentChat = () => {
 
       sendingRef.current = true;
 
+      // RCA-002: Capture ref values — immune to stale closure
+      const currentKeys     = apiKeysRef.current;
+      const currentActiveId = activeIdRef.current;
+
       // Cancel any previous in-flight stream
       abortRef.current?.abort();
       const abort = new AbortController();
@@ -229,7 +292,7 @@ export const useAgentChat = () => {
 
       setAgents((prev) =>
         prev.map((a) =>
-          a.id === activeId
+          a.id === currentActiveId
             ? {
                 ...a,
                 status: 'streaming',
@@ -240,8 +303,8 @@ export const useAgentChat = () => {
       );
 
       try {
-        const agent = agents.find((a) => a.id === activeId)!;
-        const model = getModel(agent, apiKeys);
+        const agent = agents.find((a) => a.id === currentActiveId)!;
+        const model = getModel(agent, currentKeys);
 
         // H3: Only send last MAX_CONTEXT_MESSAGES to the API
         const history = agent.history
@@ -271,7 +334,7 @@ export const useAgentChat = () => {
           const snapshot = accumulated;
           setAgents((prev) =>
             prev.map((a) =>
-              a.id === activeId
+              a.id === currentActiveId
                 ? {
                     ...a,
                     history: a.history.map((m) =>
@@ -285,7 +348,7 @@ export const useAgentChat = () => {
 
         setAgents((prev) =>
           prev.map((a) =>
-            a.id === activeId
+            a.id === currentActiveId
               ? {
                   ...a,
                   status: 'idle',
@@ -301,10 +364,10 @@ export const useAgentChat = () => {
           sendingRef.current = false;
           return;
         }
-        const errorMsg = err instanceof Error ? err.message : 'Unknown error occurred';
+        const errorMsg = humanizeError(err);
         setAgents((prev) =>
           prev.map((a) =>
-            a.id === activeId
+            a.id === currentActiveId
               ? {
                   ...a,
                   status: 'error',
@@ -347,6 +410,23 @@ export const useAgentChat = () => {
     setAgents((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
   }, []);
 
+  // ── resetSession ─────────────────────────────────────────────────────────
+  // Clears all streaming/error state and resets status to idle for all agents.
+  // Use when the UI gets stuck (blank bubbles, stuck spinner).
+  const resetSession = useCallback(() => {
+    abortRef.current?.abort();
+    sendingRef.current = false;
+    setAgents((prev) =>
+      prev.map((a) => ({
+        ...a,
+        status: 'idle',
+        history: a.history.map((m) =>
+          m.streaming ? { ...m, streaming: false, text: '⚠️ Session reset.' } : m
+        ),
+      }))
+    );
+  }, []);
+
   // ── clearHistory ──────────────────────────────────────────────────────────
   const clearHistory = useCallback((id: string) => {
     const base = INITIAL_AGENTS.find((ia) => ia.id === id);
@@ -372,6 +452,7 @@ export const useAgentChat = () => {
     stopStream,
     updateAgent,
     clearHistory,
+    resetSession,
     addAgent,
     deleteAgent,
   };

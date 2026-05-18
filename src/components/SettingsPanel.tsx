@@ -1,4 +1,4 @@
-import { Key, Trash2, X } from 'lucide-react';
+import { Key, RotateCcw, Trash2, X } from 'lucide-react';
 import { Agent, ApiKeys } from '../types';
 import { FREE_MODELS } from '../constants/agents';
 
@@ -10,10 +10,11 @@ interface Props {
   onUpdateAgent: (id: string, updates: Partial<Agent>) => void;
   onUpdateKeys: (keys: ApiKeys) => void;
   onClearHistory: (id: string) => void;
+  onResetSession: () => void;
   onClose: () => void;
 }
 
-export const SettingsPanel = ({ agent, apiKeys, onUpdateAgent, onUpdateKeys, onClearHistory, onClose }: Props) => {
+export const SettingsPanel = ({ agent, apiKeys, onUpdateAgent, onUpdateKeys, onClearHistory, onResetSession, onClose }: Props) => {
   const promptLen       = agent.systemPrompt.length;
   const promptNearLimit = promptLen > MAX_PROMPT_LENGTH * 0.85;
   const promptOverLimit = promptLen > MAX_PROMPT_LENGTH;
@@ -127,7 +128,16 @@ export const SettingsPanel = ({ agent, apiKeys, onUpdateAgent, onUpdateKeys, onC
           </div>
 
           {/* Danger Zone */}
-          <div className="pt-2 border-t border-slate-800">
+          <div className="pt-2 border-t border-slate-800 space-y-2">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Session</p>
+            <button
+              onClick={onResetSession}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 active:bg-amber-500/30 text-amber-400 rounded-lg text-xs transition-colors"
+              title="Clears stuck messages and resets all agent statuses to idle"
+            >
+              <RotateCcw size={13} />
+              Reset Session
+            </button>
             <button
               onClick={() => onClearHistory(agent.id)}
               className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 active:bg-red-500/30 text-red-400 rounded-lg text-xs transition-colors"
@@ -135,6 +145,7 @@ export const SettingsPanel = ({ agent, apiKeys, onUpdateAgent, onUpdateKeys, onC
               <Trash2 size={13} />
               Clear Conversation
             </button>
+            <p className="text-xs text-slate-600 text-center">Reset fixes stuck/blank messages</p>
           </div>
 
         </div>

@@ -16,7 +16,7 @@ const App = () => {
   const {
     agents, activeAgent, activeId, setActiveId,
     apiKeys, setApiKeys, sendMessage, stopStream,
-    updateAgent, clearHistory, addAgent, deleteAgent,
+    updateAgent, clearHistory, resetSession, addAgent, deleteAgent,
   } = useAgentChat();
 
   const handleSaveAgent = (agentDef: Omit<Agent, 'status' | 'history'>) => {
@@ -84,6 +84,7 @@ const App = () => {
           onUpdateAgent={updateAgent}
           onUpdateKeys={setApiKeys}
           onClearHistory={clearHistory}
+          onResetSession={resetSession}
           onClose={() => setShowSettings(false)}
         />
       )}
