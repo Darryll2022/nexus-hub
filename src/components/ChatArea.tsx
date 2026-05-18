@@ -31,7 +31,7 @@ const MessageBubble = ({ msg, agent }: { msg: Message; agent: Agent }) => {
       <div
         className={`px-4 py-3 rounded-2xl text-sm leading-relaxed max-w-[80%] ${
           isUser
-            ? 'bg-indigo-600 text-white rounded-tr-sm whitespace-pre-wrap'
+            ? 'bg-indigo-600 text-white rounded-tr-sm whitespace-pre-wrap break-words overflow-hidden'
             : 'bg-slate-800/80 border border-slate-700 text-slate-200 rounded-tl-sm backdrop-blur-sm'
         }`}
       >
@@ -40,11 +40,21 @@ const MessageBubble = ({ msg, agent }: { msg: Message; agent: Agent }) => {
         ) : (
           <>
             {msg.text ? (
-              <MarkdownRenderer content={msg.text} />
-            ) : (
-              msg.streaming && <StreamingCursor />
-            )}
-            {msg.streaming && msg.text && <StreamingCursor />}
+              <>
+                <MarkdownRenderer content={msg.text} />
+                {msg.streaming && <StreamingCursor />}
+              </>
+            ) : msg.streaming ? (
+              /* Empty streaming bubble — show animated "thinking" state */
+              <span className="flex items-center gap-2 text-slate-400 text-xs select-none">
+                <span className="flex gap-1">
+                  <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:0ms]" />
+                  <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:150ms]" />
+                  <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:300ms]" />
+                </span>
+                Thinking…
+              </span>
+            ) : null}
           </>
         )}
       </div>
