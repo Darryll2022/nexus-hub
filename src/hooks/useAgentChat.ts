@@ -98,6 +98,17 @@ const hydrateAgents = (base: Agent[]): Agent[] => {
 
 // ─── Provider factory ────────────────────────────────────────────────────────
 
+// RCA fix (2026-05-18): createOpenRouter must include appUrl + appName.
+// OpenRouter free models (and some paid ones) require HTTP-Referer to be set.
+// Without it the API returns 403. The raw-fetch implementation had this header
+// (Phase A security fix) but it was silently dropped during the Vercel AI SDK
+// migration. Passing appUrl causes the provider to emit:
+//   HTTP-Referer: https://nexus-hub.vercel.app
+//   X-OpenRouter-Title: Nexus Hub
+// which satisfies OpenRouter's policy for all model tiers.
+const OPENROUTER_APP_URL  = 'https://nexus-hub.vercel.app';
+const OPENROUTER_APP_NAME = 'Nexus Hub';
+
 function getModel(agent: Agent, keys: ApiKeys) {
   if (agent.provider === 'groq') {
     if (!keys.groq) throw new Error(
@@ -108,7 +119,11 @@ function getModel(agent: Agent, keys: ApiKeys) {
   if (!keys.openrouter) throw new Error(
     `No OpenRouter API key. Open Configure (⚙) and enter your OpenRouter key.`
   );
-  return createOpenRouter({ apiKey: keys.openrouter })(agent.model);
+  return createOpenRouter({
+    apiKey:  keys.openrouter,
+    appUrl:  OPENROUTER_APP_URL,   // → HTTP-Referer: https://nexus-hub.vercel.app
+    appName: OPENROUTER_APP_NAME,  // → X-OpenRouter-Title: Nexus Hub
+  })(agent.model);
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
