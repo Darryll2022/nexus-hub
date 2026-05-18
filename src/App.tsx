@@ -33,7 +33,7 @@ const App = () => {
   const isStreaming = activeAgent.status === 'streaming';
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-200 font-sans overflow-hidden">
+    <div className="flex h-[100dvh] bg-slate-950 text-slate-200 font-sans overflow-hidden relative">
 
       {/* ── Mobile backdrop ── */}
       {sidebarOpen && (
@@ -44,10 +44,11 @@ const App = () => {
       )}
 
       {/* ── Sidebar ── */}
+      {/* Mobile: fixed slide-over overlay; Desktop: static sidebar */}
       <div className={`
-        fixed inset-y-0 left-0 z-40 w-72 transition-transform duration-300
-        md:static md:translate-x-0 md:z-auto
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        fixed inset-y-0 left-0 z-40 w-[280px] transition-transform duration-300 ease-in-out
+        md:static md:w-auto md:translate-x-0 md:z-auto md:shrink-0
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
         <AgentSidebar
           agents={agents}
@@ -59,7 +60,7 @@ const App = () => {
       </div>
 
       {/* ── Main pane ── */}
-      <div className="flex-1 flex flex-col bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 to-slate-950 min-w-0">
+      <div className="flex-1 flex flex-col bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 to-slate-950 min-w-0 w-full">
         <Header
           agent={activeAgent}
           showSettings={showSettings}
