@@ -1,4 +1,5 @@
-import { Key, RotateCcw, Trash2, X } from 'lucide-react';
+import { useState } from 'react';
+import { Eye, EyeOff, Key, RotateCcw, Trash2, X } from 'lucide-react';
 import { Agent, ApiKeys } from '../types';
 import { FREE_MODELS } from '../constants/agents';
 
@@ -15,6 +16,8 @@ interface Props {
 }
 
 export const SettingsPanel = ({ agent, apiKeys, onUpdateAgent, onUpdateKeys, onClearHistory, onResetSession, onClose }: Props) => {
+  const [showKeys, setShowKeys] = useState({ openrouter: false, groq: false });
+
   const promptLen       = agent.systemPrompt.length;
   const promptNearLimit = promptLen > MAX_PROMPT_LENGTH * 0.85;
   const promptOverLimit = promptLen > MAX_PROMPT_LENGTH;
@@ -63,23 +66,37 @@ export const SettingsPanel = ({ agent, apiKeys, onUpdateAgent, onUpdateKeys, onC
             <div className="space-y-2">
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">OpenRouter Key</label>
-                <input
-                  type="password"
-                  placeholder="sk-or-..."
-                  value={apiKeys.openrouter}
-                  onChange={(e) => onUpdateKeys({ ...apiKeys, openrouter: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 text-slate-200 placeholder-slate-600 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                />
+                <div className="relative">
+                  <input
+                    type={showKeys.openrouter ? 'text' : 'password'}
+                    placeholder="sk-or-..."
+                    value={apiKeys.openrouter}
+                    onChange={(e) => onUpdateKeys({ ...apiKeys, openrouter: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 text-slate-200 placeholder-slate-600 rounded-lg px-3 py-2 pr-8 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <button type="button" onClick={() => setShowKeys((s) => ({ ...s, openrouter: !s.openrouter }))}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+                    {showKeys.openrouter ? <EyeOff size={12} /> : <Eye size={12} />}
+                  </button>
+                </div>
+                {apiKeys.openrouter && <p className="text-xs text-emerald-500 mt-1">✓ Key saved</p>}
               </div>
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Groq Key</label>
-                <input
-                  type="password"
-                  placeholder="gsk_..."
-                  value={apiKeys.groq}
-                  onChange={(e) => onUpdateKeys({ ...apiKeys, groq: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 text-slate-200 placeholder-slate-600 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                />
+                <div className="relative">
+                  <input
+                    type={showKeys.groq ? 'text' : 'password'}
+                    placeholder="gsk_..."
+                    value={apiKeys.groq}
+                    onChange={(e) => onUpdateKeys({ ...apiKeys, groq: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 text-slate-200 placeholder-slate-600 rounded-lg px-3 py-2 pr-8 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <button type="button" onClick={() => setShowKeys((s) => ({ ...s, groq: !s.groq }))}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+                    {showKeys.groq ? <EyeOff size={12} /> : <Eye size={12} />}
+                  </button>
+                </div>
+                {apiKeys.groq && <p className="text-xs text-emerald-500 mt-1">✓ Key saved</p>}
               </div>
             </div>
           </div>
@@ -95,10 +112,21 @@ export const SettingsPanel = ({ agent, apiKeys, onUpdateAgent, onUpdateKeys, onC
               }}
               className="w-full bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
             >
-              {FREE_MODELS.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
+              <optgroup label="── OpenRouter (uses OR key)">
+                {FREE_MODELS.filter((m) => m.provider === 'openrouter').map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="── Groq (uses Groq key)">
+                {FREE_MODELS.filter((m) => m.provider === 'groq').map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </optgroup>
             </select>
+            <p className="text-xs text-slate-600 mt-1">
+              Active provider: <span className="text-indigo-400 font-medium">{agent.provider === 'openrouter' ? 'OpenRouter' : 'Groq'}</span>
+              {' '}— switching model auto-switches key
+            </p>
           </div>
 
           {/* System Prompt */}

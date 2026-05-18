@@ -7,6 +7,9 @@ export const FREE_MODELS: ModelOption[] = [
   { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B (OpenRouter Free)', provider: 'openrouter' },
   { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B (Groq Fast)', provider: 'groq' },
   { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B (Groq Versatile)', provider: 'groq' },
+  { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B (OpenRouter)', provider: 'openrouter' },
+  { id: 'anthropic/claude-3.5-haiku', name: 'Claude 3.5 Haiku (OpenRouter)', provider: 'openrouter' },
+  { id: 'google/gemini-2.0-flash-001', name: 'Gemini 2.0 Flash (OpenRouter)', provider: 'openrouter' },
 ];
 
 export const INITIAL_AGENTS: Agent[] = [
