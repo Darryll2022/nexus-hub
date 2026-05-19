@@ -304,6 +304,62 @@ export const useAgentChat = () => {
 
       try {
         const agent = agents.find((a) => a.id === currentActiveId)!;
+
+        // ── External API agent (e.g. Sham endpoint) ────────────────────────
+        if (agent.provider === 'external') {
+          const cfg = agent.externalConfig;
+          if (!cfg?.endpoint || !cfg?.secret) {
+            throw new Error('External agent is missing endpoint or secret configuration.');
+          }
+
+          const history = agent.history
+            .slice(-MAX_CONTEXT_MESSAGES)
+            .filter((m) => !m.streaming);
+
+          const messages = [
+            ...history.map((m) => ({
+              role: (m.role === 'agent' ? 'assistant' : 'user') as 'user' | 'assistant',
+              content: m.text,
+            })),
+            { role: 'user' as const, content: text },
+          ];
+
+          const extRes = await fetch(cfg.endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Agent-Secret': cfg.secret,
+            },
+            body: JSON.stringify({ messages }),
+            signal: abort.signal,
+          });
+
+          if (!extRes.ok) {
+            const errJson = await extRes.json().catch(() => ({}));
+            throw new Error((errJson as { error?: string }).error ?? `External API error ${extRes.status}`);
+          }
+
+          const reply = await extRes.json() as { role: string; content: string };
+
+          setAgents((prev) =>
+            prev.map((a) =>
+              a.id === currentActiveId
+                ? {
+                    ...a,
+                    status: 'idle',
+                    history: a.history.map((m) =>
+                      m.streaming
+                        ? { ...m, streaming: false, text: reply.content }
+                        : m
+                    ),
+                  }
+                : a
+            )
+          );
+          return;
+        }
+
+        // ── Standard LLM agents (Groq / OpenRouter) ────────────────────────
         const model = getModel(agent, currentKeys);
 
         // H3: Only send last MAX_CONTEXT_MESSAGES to the API

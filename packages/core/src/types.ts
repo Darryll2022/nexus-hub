@@ -1,6 +1,6 @@
 export type AgentStatus = 'idle' | 'thinking' | 'streaming' | 'error';
 export type MessageRole = 'user' | 'agent';
-export type ApiProvider = 'openrouter' | 'groq';
+export type ApiProvider = 'openrouter' | 'groq' | 'external';
 
 /**
  * AgentType — 'llm' uses the Vercel AI SDK (Groq / OpenRouter).
@@ -35,11 +35,21 @@ export interface Agent {
   opencodeDirectory?: string;
   /** Enable rich part rendering (Level 2) — defaults to false */
   richMode?: boolean;
+  /** External API config — only used when provider === 'external' */
+  externalConfig?: ExternalAgentConfig;
 }
 
 export interface ApiKeys {
   openrouter: string;
   groq: string;
+}
+
+/** Config for an external API agent (e.g. Sham endpoint) */
+export interface ExternalAgentConfig {
+  /** Full URL to the external chat endpoint */
+  endpoint: string;
+  /** Value sent as X-Agent-Secret header */
+  secret: string;
 }
 
 export interface ModelOption {

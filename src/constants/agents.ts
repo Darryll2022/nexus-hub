@@ -65,4 +65,21 @@ Always: distinguish facts from inferences, cite sources when known, flag areas o
 Format responses with headers and bullet points for scannability. Prioritize depth over breadth — go deep on what matters most.`,
     history: [{ role: 'agent', text: 'Lyra here. What are we investigating today?', timestamp: new Date() }],
   },
+  {
+    id: '4',
+    name: 'Sham',
+    role: 'Portfolio & Nexus Hub Developer',
+    iconName: 'Sparkles',
+    color: 'text-violet-400',
+    bgColor: 'bg-violet-400/10',
+    status: 'idle',
+    model: 'llama-3.3-70b-versatile',   // informational only — routed externally
+    provider: 'external',
+    systemPrompt: '',                    // system prompt lives server-side
+    externalConfig: {
+      endpoint: 'https://sham-f2a98ff3.base44.app/functions/shamChat',
+      secret: '780b2bd688304d8b8e1a165395f8a850',
+    },
+    history: [{ role: 'agent', text: "Sham here. I know your portfolio and Nexus Hub inside out — ask me anything.", timestamp: new Date() }],
+  },
 ];
