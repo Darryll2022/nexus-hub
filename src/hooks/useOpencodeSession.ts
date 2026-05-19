@@ -50,7 +50,7 @@ export function useOpencodeSession(
     // Timeout guard — if create() never resolves, mark offline
     timerRef.current = setTimeout(() => {
       if (!cancelled && status === 'offline') {
-        console.warn('[useOpencodeSession] Server did not respond within timeout — staying offline.');
+        // '[useOpencodeSession] Server did not respond within timeout — staying offline.';  // suppressed
       }
     }, CONNECTION_TIMEOUT_MS);
 
@@ -203,7 +203,7 @@ export function useOpencodeSession(
           body: { parts: [{ type: 'text', text }] },
         });
       } catch (err) {
-        console.error('[useOpencodeSession] promptAsync failed:', err);
+        // '[useOpencodeSession] promptAsync failed:', err;  // suppressed
         setStatus('error');
       }
     },

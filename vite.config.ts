@@ -2,8 +2,6 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // M5: Content Security Policy
-// connect-src includes http://127.0.0.1:4096 for local opencode server (dev + local prod).
-// This is safe on Vercel — the server won't be running there, so the rule is harmless.
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
@@ -27,14 +25,33 @@ export default defineConfig({
       'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
     },
     proxy: {
-      // Dev proxy: /opencode/* → http://127.0.0.1:4096/*
-      // Removes CORS issues when calling the opencode server from the browser in dev.
-      // SSE streams (EventSource) pass through correctly with changeOrigin: true.
       '/opencode': {
         target: 'http://127.0.0.1:4096',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/opencode/, ''),
       },
+    },
+  },
+  build: {
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        // Hash-only filenames — no framework name hints
+        entryFileNames: 'assets/[hash].js',
+        chunkFileNames: 'assets/[hash].js',
+        assetFileNames: 'assets/[hash][extname]',
+        banner: '',
+      },
+    },
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
+        passes: 2,
+      },
+      mangle: { toplevel: true },
+      format: { comments: false },
     },
   },
 })
