@@ -16,7 +16,7 @@ interface Props {
 }
 
 export const SettingsPanel = ({ agent, apiKeys, onUpdateAgent, onUpdateKeys, onClearHistory, onResetSession, onClose }: Props) => {
-  const [showKeys, setShowKeys] = useState({ openrouter: false, groq: false });
+  const [showKeys, setShowKeys] = useState({ openrouter: false, groq: false, shamSecret: false });
 
   const promptLen       = agent.systemPrompt.length;
   const promptNearLimit = promptLen > MAX_PROMPT_LENGTH * 0.85;
@@ -97,6 +97,25 @@ export const SettingsPanel = ({ agent, apiKeys, onUpdateAgent, onUpdateKeys, onC
                   </button>
                 </div>
                 {apiKeys.groq && <p className="text-xs text-emerald-500 mt-1">✓ Key saved</p>}
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  Sham Secret <span className="text-violet-400 font-medium">(for Sham agent)</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showKeys.shamSecret ? 'text' : 'password'}
+                    placeholder="your-sham-secret"
+                    value={apiKeys.shamSecret}
+                    onChange={(e) => onUpdateKeys({ ...apiKeys, shamSecret: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 text-slate-200 placeholder-slate-600 rounded-lg px-3 py-2 pr-8 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500"
+                  />
+                  <button type="button" onClick={() => setShowKeys((s) => ({ ...s, shamSecret: !s.shamSecret }))}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+                    {showKeys.shamSecret ? <EyeOff size={12} /> : <Eye size={12} />}
+                  </button>
+                </div>
+                {apiKeys.shamSecret && <p className="text-xs text-emerald-500 mt-1">✓ Key saved</p>}
               </div>
             </div>
           </div>

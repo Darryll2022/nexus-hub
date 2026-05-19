@@ -61,11 +61,11 @@ const loadHistory = (): Record<string, Message[]> => {
 const loadApiKeys = (): ApiKeys => {
   try {
     const raw = localStorage.getItem(KEYS_STORAGE_KEY);
-    if (!raw) return { openrouter: '', groq: '' };
+    if (!raw) return { openrouter: '', groq: '', shamSecret: '' };
     return JSON.parse(raw) as ApiKeys;
   } catch {
     console.warn('[nexus-hub] Failed to parse API keys from localStorage — resetting.');
-    return { openrouter: '', groq: '' };
+    return { openrouter: '', groq: '', shamSecret: '' };
   }
 };
 
@@ -324,11 +324,16 @@ export const useAgentChat = () => {
             { role: 'user' as const, content: text },
           ];
 
+          // Secret comes from ApiKeys (localStorage) not hardcoded config
+          const agentSecret = currentKeys.shamSecret || cfg.secret;
+          if (!agentSecret) {
+            throw new Error('Sham secret not configured. Open Configure (⚙) and enter your Sham Secret.');
+          }
           const extRes = await fetch(cfg.endpoint, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'X-Agent-Secret': cfg.secret,
+              'X-Agent-Secret': agentSecret,
             },
             body: JSON.stringify({ messages }),
             signal: abort.signal,

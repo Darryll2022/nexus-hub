@@ -42,6 +42,7 @@ export interface Agent {
 export interface ApiKeys {
   openrouter: string;
   groq: string;
+  shamSecret: string;
 }
 
 /** Config for an external API agent (e.g. Sham endpoint) */

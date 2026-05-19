@@ -78,7 +78,7 @@ Format responses with headers and bullet points for scannability. Prioritize dep
     systemPrompt: '',                    // system prompt lives server-side
     externalConfig: {
       endpoint: 'https://sham-f2a98ff3.base44.app/functions/shamChat',
-      secret: '780b2bd688304d8b8e1a165395f8a850',
+      secret: '',  // loaded from ApiKeys.shamSecret (Configure panel) at runtime
     },
     history: [{ role: 'agent', text: "Sham here. I know your portfolio and Nexus Hub inside out — ask me anything.", timestamp: new Date() }],
   },
