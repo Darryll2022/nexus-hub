@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AgentSidebar } from './components/AgentSidebar';
 import { Header } from './components/Header';
 import { ChatArea } from './components/ChatArea';
@@ -18,6 +18,21 @@ const App = () => {
     apiKeys, setApiKeys, sendMessage, stopStream,
     updateAgent, clearHistory, resetSession, addAgent, deleteAgent,
   } = useAgentChat();
+
+  // ── BYOK from portfolio deep-link ─────────────────────────────────────────
+  // Portfolio passes key as hash fragment: nexus-hub.vercel.app/#orkey=sk-or-...
+  // Hash never reaches server logs. We read it once, save to state, then clear.
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash.startsWith('#orkey=')) return;
+    const raw = decodeURIComponent(hash.slice('#orkey='.length));
+    if (!raw || !raw.startsWith('sk-or-')) return;
+    // Merge into existing keys (don't overwrite groq key if present)
+    setApiKeys({ ...apiKeys, openrouter: raw });
+    // Clear hash so the key isn't visible in the URL bar
+    window.history.replaceState(null, '', window.location.pathname);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSaveAgent = (agentDef: Omit<Agent, 'status' | 'history'>) => {
     addAgent(agentDef);
