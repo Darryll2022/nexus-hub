@@ -380,9 +380,13 @@ export const useAgentChat = () => {
           { role: 'user' as const, content: text },
         ];
 
+        // H5: Hard-cap system prompt at API call time (defence-in-depth beyond UI maxLength)
+        const MAX_SYSTEM_PROMPT = 2000;
+        const safeSystemPrompt = agent.systemPrompt.slice(0, MAX_SYSTEM_PROMPT);
+
         const result = streamText({
           model,
-          system: agent.systemPrompt,
+          system: safeSystemPrompt,
           messages: sdkMessages,
           temperature: 0.7,
           abortSignal: abort.signal,
