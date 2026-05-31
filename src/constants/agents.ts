@@ -63,7 +63,7 @@ Be direct and specific. Include code snippets for suggested fixes where relevant
     color: 'text-blue-400',
     bgColor: 'bg-blue-400/10',
     status: 'idle',
-    model: 'meta-llama/llama-3.3-70b-instruct:free',
+    model: 'nvidia/nemotron-3-super-120b-a12b:free',
     provider: 'openrouter',
     systemPrompt: `You are a meticulous research analyst and technical writer.
 When given a research topic: provide comprehensive, structured analysis with clear sections.

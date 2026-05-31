@@ -3,7 +3,7 @@ import { createGroq } from '@ai-sdk/groq';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { streamText } from 'ai';
 import { Agent, ApiKeys, Message } from '../types';
-import { INITIAL_AGENTS } from '../constants/agents';
+import { INITIAL_AGENTS, FREE_MODELS } from '../constants/agents';
 
 const STORAGE_KEY        = 'nexus-hub:history';
 const KEYS_STORAGE_KEY   = 'nexus-hub:apikeys';
@@ -52,7 +52,6 @@ const loadHistory = (): Record<string, Message[]> => {
       ])
     );
   } catch {
-    // L1: Surface storage corruption rather than silently swallowing
     console.warn('[nexus-hub] Failed to parse chat history from localStorage — resetting.');
     return {};
   }
@@ -96,24 +95,36 @@ const hydrateAgents = (base: Agent[]): Agent[] => {
   );
 };
 
-// ─── Provider factory ────────────────────────────────────────────────────────
+// ─── Free model fallback chain ────────────────────────────────────────────────
+// Ordered list of OpenRouter :free models to try when the primary 429s.
+// When a :free model rate-limits, we auto-retry with the next one in the chain
+// and surface a soft notice rather than a hard error.
+const OR_FREE_FALLBACK_CHAIN = FREE_MODELS
+  .filter((m) => m.provider === 'openrouter' && m.id.endsWith(':free'))
+  .map((m) => m.id);
 
-// RCA fix (2026-05-18): createOpenRouter must include appUrl + appName.
-// ── Error Humanizer ───────────────────────────────────────────────────────────
-// Converts raw API error objects/strings into readable messages.
-// Groq rate-limit errors arrive as JSON strings in err.message.
-// OpenRouter errors arrive as structured APICallError messages.
-function humanizeError(err: unknown): string {
+function is429(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  // OpenRouter surfaces 429s as a provider error with code 429 in the message
+  return msg.includes('429') || msg.includes('rate-limit') || msg.includes('rate_limit')
+    || msg.includes('provider returned error') || msg.includes('temporarily rate-limited');
+}
+
+// ─── Error Humanizer ──────────────────────────────────────────────────────────
+function humanizeError(err: unknown, fallbacksExhausted = false): string {
   if (!(err instanceof Error)) return 'Unknown error occurred.';
+
+  // If we've exhausted all free fallbacks, give a clearer message
+  if (fallbacksExhausted) {
+    return 'All free OpenRouter models are currently rate-limited. Try again in a minute, or switch to a paid model in Configure (⚙).';
+  }
 
   const raw = err.message;
 
-  // Attempt to parse Groq-style rate-limit JSON embedded in the message
-  // e.g. '{"type":"exceeded_limit","resetsAt":1779091800,...}'
   const jsonStart = raw.indexOf('{');
   if (jsonStart >= 0) {
     try {
-      // Groq sometimes concatenates multiple JSON objects separated by newlines — grab the first
       const firstJson = raw.slice(jsonStart).split('\n')[0].replace(/,$/, '');
       const parsed = JSON.parse(firstJson);
 
@@ -134,11 +145,10 @@ function humanizeError(err: unknown): string {
       if (parsed.error?.message) return parsed.error.message;
       if (parsed.message) return parsed.message;
     } catch {
-      // Not JSON — fall through to raw message
+      // not JSON — fall through
     }
   }
 
-  // OpenRouter / generic API errors — strip noisy prefixes
   const cleaned = raw
     .replace(/^AI_APICallError:\s*/i, '')
     .replace(/^Error:\s*/i, '')
@@ -147,34 +157,29 @@ function humanizeError(err: unknown): string {
   return cleaned || 'An unexpected error occurred.';
 }
 
-// OpenRouter free models (and some paid ones) require HTTP-Referer to be set.
-// Without it the API returns 403. The raw-fetch implementation had this header
-// (Phase A security fix) but it was silently dropped during the Vercel AI SDK
-// migration. Passing appUrl causes the provider to emit:
-//   HTTP-Referer: https://nexus-hub.vercel.app
-//   X-OpenRouter-Title: Nexus Hub
-// which satisfies OpenRouter's policy for all model tiers.
+// ─── Provider factory ─────────────────────────────────────────────────────────
 const OPENROUTER_APP_URL  = 'https://nexus-hub.vercel.app';
 const OPENROUTER_APP_NAME = 'Nexus Hub';
 
-function getModel(agent: Agent, keys: ApiKeys) {
+function getModel(agent: Agent, keys: ApiKeys, modelOverride?: string) {
+  const modelId = modelOverride ?? agent.model;
   if (agent.provider === 'groq') {
     if (!keys.groq) throw new Error(
       `No Groq API key. Open Configure (⚙) and enter your Groq key.`
     );
-    return createGroq({ apiKey: keys.groq })(agent.model);
+    return createGroq({ apiKey: keys.groq })(modelId);
   }
   if (!keys.openrouter) throw new Error(
     `No OpenRouter API key. Open Configure (⚙) and enter your OpenRouter key.`
   );
   return createOpenRouter({
     apiKey:  keys.openrouter,
-    appUrl:  OPENROUTER_APP_URL,   // → HTTP-Referer: https://nexus-hub.vercel.app
-    appName: OPENROUTER_APP_NAME,  // → X-OpenRouter-Title: Nexus Hub
-  })(agent.model);
+    appUrl:  OPENROUTER_APP_URL,
+    appName: OPENROUTER_APP_NAME,
+  })(modelId);
 }
 
-// ─── Hook ────────────────────────────────────────────────────────────────────
+// ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export const useAgentChat = () => {
   const [agents, setAgents] = useState<Agent[]>(() => [
@@ -191,14 +196,10 @@ export const useAgentChat = () => {
   // Abort controller — cancels in-flight stream
   const abortRef = useRef<AbortController | null>(null);
 
-  // RCA-002: Stale-closure fix — always read current values inside sendMessage.
-  // useCallback deps include apiKeys/activeId, but React batches state updates,
-  // so a sendMessage called in the same tick as setApiKeys reads the old snapshot.
-  // Refs are always current regardless of closure age.
+  // RCA-002: Stale-closure fix
   const apiKeysRef  = useRef<ApiKeys>(apiKeys);
   const activeIdRef = useRef<string>(activeId);
 
-  // Persist history whenever agents change (skip in-flight streaming messages)
   useEffect(() => {
     const stable = agents.map((a) => ({
       ...a,
@@ -220,13 +221,12 @@ export const useAgentChat = () => {
     }
   }, []);
 
-  // Keep refs current — must run before sendMessage is called
   apiKeysRef.current  = apiKeys;
   activeIdRef.current = activeId;
 
   const activeAgent = agents.find((a) => a.id === activeId) ?? agents[0];
 
-  // ── addAgent ──────────────────────────────────────────────────────────────
+  // ── addAgent ───────────────────────────────────────────────────────────────
   const addAgent = useCallback((agentDef: Omit<Agent, 'status' | 'history'>) => {
     const greeting: Message = {
       role: 'agent',
@@ -244,7 +244,7 @@ export const useAgentChat = () => {
     setActiveId(newAgent.id);
   }, []);
 
-  // ── deleteAgent ───────────────────────────────────────────────────────────
+  // ── deleteAgent ────────────────────────────────────────────────────────────
   const deleteAgent = useCallback(
     (id: string) => {
       setAgents((prev) => {
@@ -258,26 +258,22 @@ export const useAgentChat = () => {
     [activeId]
   );
 
-  // ── sendMessage ───────────────────────────────────────────────────────────
+  // ── sendMessage ────────────────────────────────────────────────────────────
   const sendMessage = useCallback(
     async (text: string) => {
       if (!text.trim()) return;
 
-      // H2: Send lock — blocks overlapping sends
       if (sendingRef.current) return;
 
-      // H2: Debounce — minimum 500ms between sends
       const now = Date.now();
       if (now - lastSentRef.current < SEND_DEBOUNCE_MS) return;
       lastSentRef.current = now;
 
       sendingRef.current = true;
 
-      // RCA-002: Capture ref values — immune to stale closure
       const currentKeys     = apiKeysRef.current;
       const currentActiveId = activeIdRef.current;
 
-      // Cancel any previous in-flight stream
       abortRef.current?.abort();
       const abort = new AbortController();
       abortRef.current = abort;
@@ -305,7 +301,7 @@ export const useAgentChat = () => {
       try {
         const agent = agents.find((a) => a.id === currentActiveId)!;
 
-        // ── External API agent (e.g. Sham endpoint) ────────────────────────
+        // ── External agent (Sham) ────────────────────────────────────────────
         if (agent.provider === 'external') {
           const cfg = agent.externalConfig;
           if (!cfg?.endpoint || !cfg?.secret) {
@@ -324,7 +320,6 @@ export const useAgentChat = () => {
             { role: 'user' as const, content: text },
           ];
 
-          // Secret comes from ApiKeys (localStorage) not hardcoded config
           const agentSecret = currentKeys.shamSecret || cfg.secret;
           if (!agentSecret) {
             throw new Error('Sham secret not configured. Open Configure (⚙) and enter your Sham Secret.');
@@ -364,10 +359,7 @@ export const useAgentChat = () => {
           return;
         }
 
-        // ── Standard LLM agents (Groq / OpenRouter) ────────────────────────
-        const model = getModel(agent, currentKeys);
-
-        // H3: Only send last MAX_CONTEXT_MESSAGES to the API
+        // ── Standard LLM agents (Groq / OpenRouter) with free-tier fallback ──
         const history = agent.history
           .slice(-MAX_CONTEXT_MESSAGES)
           .filter((m) => !m.streaming);
@@ -380,56 +372,111 @@ export const useAgentChat = () => {
           { role: 'user' as const, content: text },
         ];
 
-        // H5: Hard-cap system prompt at API call time (defence-in-depth beyond UI maxLength)
         const MAX_SYSTEM_PROMPT = 2000;
         const safeSystemPrompt = agent.systemPrompt.slice(0, MAX_SYSTEM_PROMPT);
 
-        const result = streamText({
-          model,
-          system: safeSystemPrompt,
-          messages: sdkMessages,
-          temperature: 0.7,
-          abortSignal: abort.signal,
-        });
+        // Build the model attempt list.
+        // For OpenRouter :free agents: try their assigned model first, then cycle
+        // through the remaining free fallback chain automatically on 429.
+        // For Groq or paid OR models: no fallback (single attempt).
+        const isFreeTier = agent.provider === 'openrouter' && agent.model.endsWith(':free');
+        const modelAttempts: string[] = isFreeTier
+          ? [
+              agent.model,
+              ...OR_FREE_FALLBACK_CHAIN.filter((id) => id !== agent.model),
+            ]
+          : [agent.model];
 
-        let accumulated = '';
-        for await (const chunk of result.textStream) {
+        let lastErr: unknown = null;
+        let succeeded = false;
+
+        for (const modelId of modelAttempts) {
           if (abort.signal.aborted) break;
-          accumulated += chunk;
-          const snapshot = accumulated;
-          setAgents((prev) =>
-            prev.map((a) =>
-              a.id === currentActiveId
-                ? {
-                    ...a,
-                    history: a.history.map((m) =>
-                      m.streaming ? { ...m, text: snapshot } : m
-                    ),
-                  }
-                : a
-            )
-          );
+          try {
+            const model = getModel(agent, currentKeys, modelId);
+
+            // Show which fallback we're using (soft notice in streaming bubble)
+            if (modelId !== agent.model) {
+              const notice = `⚡ "${agent.model}" rate-limited — retrying with ${modelId}…\n\n`;
+              setAgents((prev) =>
+                prev.map((a) =>
+                  a.id === currentActiveId
+                    ? {
+                        ...a,
+                        history: a.history.map((m) =>
+                          m.streaming ? { ...m, text: notice } : m
+                        ),
+                      }
+                    : a
+                )
+              );
+            }
+
+            const result = streamText({
+              model,
+              system: safeSystemPrompt,
+              messages: sdkMessages,
+              temperature: 0.7,
+              abortSignal: abort.signal,
+            });
+
+            let accumulated = modelId !== agent.model
+              ? `⚡ *Using fallback: ${modelId}*\n\n`
+              : '';
+
+            for await (const chunk of result.textStream) {
+              if (abort.signal.aborted) break;
+              accumulated += chunk;
+              const snapshot = accumulated;
+              setAgents((prev) =>
+                prev.map((a) =>
+                  a.id === currentActiveId
+                    ? {
+                        ...a,
+                        history: a.history.map((m) =>
+                          m.streaming ? { ...m, text: snapshot } : m
+                        ),
+                      }
+                    : a
+                )
+              );
+            }
+
+            setAgents((prev) =>
+              prev.map((a) =>
+                a.id === currentActiveId
+                  ? {
+                      ...a,
+                      status: 'idle',
+                      history: a.history.map((m) =>
+                        m.streaming ? { ...m, streaming: false } : m
+                      ),
+                    }
+                  : a
+              )
+            );
+
+            succeeded = true;
+            break; // ✅ success — stop trying fallbacks
+          } catch (err) {
+            lastErr = err;
+            if (!is429(err)) break; // non-429 error → don't try next model, surface it
+            // 429 → loop continues to next fallback model
+          }
         }
 
-        setAgents((prev) =>
-          prev.map((a) =>
-            a.id === currentActiveId
-              ? {
-                  ...a,
-                  status: 'idle',
-                  history: a.history.map((m) =>
-                    m.streaming ? { ...m, streaming: false } : m
-                  ),
-                }
-              : a
-          )
-        );
+        if (!succeeded && !abort.signal.aborted) {
+          throw lastErr; // re-throw for the outer catch to handle
+        }
+
       } catch (err) {
         if ((err as Error).name === 'AbortError') {
           sendingRef.current = false;
           return;
         }
-        const errorMsg = humanizeError(err);
+        // Check if we exhausted the full fallback chain
+        const exhausted = is429(err);
+        const errorMsg = humanizeError(err, exhausted);
         setAgents((prev) =>
           prev.map((a) =>
             a.id === currentActiveId
@@ -452,7 +499,7 @@ export const useAgentChat = () => {
     [activeId, agents, apiKeys]
   );
 
-  // ── stopStream ────────────────────────────────────────────────────────────
+  // ── stopStream ─────────────────────────────────────────────────────────────
   const stopStream = useCallback(() => {
     abortRef.current?.abort();
     setAgents((prev) =>
@@ -470,17 +517,30 @@ export const useAgentChat = () => {
     );
   }, [activeId]);
 
-  // ── updateAgent ───────────────────────────────────────────────────────────
+  // ── updateAgent ────────────────────────────────────────────────────────────
   const updateAgent = useCallback((id: string, updates: Partial<Agent>) => {
     setAgents((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
   }, []);
 
-  // ── resetSession ─────────────────────────────────────────────────────────
-  // Clears all streaming/error state and resets status to idle for all agents.
-  // Use when the UI gets stuck (blank bubbles, stuck spinner).
-  const resetSession = useCallback(() => {
+  // ── clearConversation ──────────────────────────────────────────────────────
+  const clearConversation = useCallback((id: string) => {
+    const agent = agents.find((a) => a.id === id);
+    if (!agent) return;
+    const greeting: Message = {
+      role: 'agent',
+      text: agent.history[0]?.text ?? `${agent.name} ready.`,
+      timestamp: new Date(),
+    };
+    setAgents((prev) =>
+      prev.map((a) =>
+        a.id === id ? { ...a, history: [greeting], status: 'idle' } : a
+      )
+    );
+  }, [agents]);
+
+  // ── resetAllStreams ────────────────────────────────────────────────────────
+  const resetAllStreams = useCallback(() => {
     abortRef.current?.abort();
-    sendingRef.current = false;
     setAgents((prev) =>
       prev.map((a) => ({
         ...a,
@@ -489,20 +549,6 @@ export const useAgentChat = () => {
           m.streaming ? { ...m, streaming: false, text: '⚠️ Session reset.' } : m
         ),
       }))
-    );
-  }, []);
-
-  // ── clearHistory ──────────────────────────────────────────────────────────
-  const clearHistory = useCallback((id: string) => {
-    const base = INITIAL_AGENTS.find((ia) => ia.id === id);
-    const greeting: Message = base
-      ? base.history[0]
-      : { role: 'agent', text: 'Ready. How can I help?', timestamp: new Date() };
-
-    setAgents((prev) =>
-      prev.map((a) =>
-        a.id === id ? { ...a, history: [greeting], status: 'idle' } : a
-      )
     );
   }, []);
 
@@ -515,10 +561,10 @@ export const useAgentChat = () => {
     setApiKeys,
     sendMessage,
     stopStream,
-    updateAgent,
-    clearHistory,
-    resetSession,
     addAgent,
     deleteAgent,
+    updateAgent,
+    clearConversation,
+    resetAllStreams,
   };
 };

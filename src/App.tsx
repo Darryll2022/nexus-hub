@@ -16,7 +16,7 @@ const App = () => {
   const {
     agents, activeAgent, activeId, setActiveId,
     apiKeys, setApiKeys, sendMessage, stopStream,
-    updateAgent, clearHistory, resetSession, addAgent, deleteAgent,
+    updateAgent, clearConversation: clearHistory, resetAllStreams: resetSession, addAgent, deleteAgent,
   } = useAgentChat();
 
   // ── BYOK from portfolio deep-link ─────────────────────────────────────────
