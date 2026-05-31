@@ -103,6 +103,13 @@ const OR_FREE_FALLBACK_CHAIN = FREE_MODELS
   .filter((m) => m.provider === 'openrouter' && m.id.endsWith(':free'))
   .map((m) => m.id);
 
+// Groq fallback chain — if the assigned model rate-limits, flip to the other.
+// 8B is fast (Blocker Buster default); 70B is powerful (Atlas default).
+// On 429, each falls back to the other so the agent stays usable.
+const GROQ_FALLBACK_CHAIN = FREE_MODELS
+  .filter((m) => m.provider === 'groq')
+  .map((m) => m.id);
+
 function is429(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
@@ -376,15 +383,15 @@ export const useAgentChat = () => {
         const safeSystemPrompt = agent.systemPrompt.slice(0, MAX_SYSTEM_PROMPT);
 
         // Build the model attempt list.
-        // For OpenRouter :free agents: try their assigned model first, then cycle
-        // through the remaining free fallback chain automatically on 429.
-        // For Groq or paid OR models: no fallback (single attempt).
-        const isFreeTier = agent.provider === 'openrouter' && agent.model.endsWith(':free');
-        const modelAttempts: string[] = isFreeTier
-          ? [
-              agent.model,
-              ...OR_FREE_FALLBACK_CHAIN.filter((id) => id !== agent.model),
-            ]
+        // OR :free  → try assigned model first, then cycle through OR_FREE_FALLBACK_CHAIN.
+        // Groq      → try assigned model first, then the other Groq model.
+        // Paid OR / external → single attempt (no free fallback to try).
+        const isOrFree  = agent.provider === 'openrouter' && agent.model.endsWith(':free');
+        const isGroq    = agent.provider === 'groq';
+        const modelAttempts: string[] = isOrFree
+          ? [agent.model, ...OR_FREE_FALLBACK_CHAIN.filter((id) => id !== agent.model)]
+          : isGroq
+          ? [agent.model, ...GROQ_FALLBACK_CHAIN.filter((id) => id !== agent.model)]
           : [agent.model];
 
         let lastErr: unknown = null;
@@ -397,7 +404,7 @@ export const useAgentChat = () => {
 
             // Show which fallback we're using (soft notice in streaming bubble)
             if (modelId !== agent.model) {
-              const notice = `⚡ "${agent.model}" rate-limited — retrying with ${modelId}…\n\n`;
+              const notice = `⚡ Rate-limited on "${agent.model}" — retrying with ${modelId}…\n\n`;
               setAgents((prev) =>
                 prev.map((a) =>
                   a.id === currentActiveId
@@ -421,7 +428,7 @@ export const useAgentChat = () => {
             });
 
             let accumulated = modelId !== agent.model
-              ? `⚡ *Using fallback: ${modelId}*\n\n`
+              ? `⚡ *Rate-limited — using fallback: ${modelId}*\n\n`
               : '';
 
             for await (const chunk of result.textStream) {
