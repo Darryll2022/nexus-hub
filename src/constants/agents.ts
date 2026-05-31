@@ -1,15 +1,21 @@
 import { Agent, ModelOption } from '../types';
 
+// ── Free model list — last verified 2026-05-31 ────────────────────────────────
+// Check openrouter.ai/models?q=:free for updates when models 404.
 export const FREE_MODELS: ModelOption[] = [
-  { id: 'meta-llama/llama-3-8b-instruct:free', name: 'Llama 3 8B (OpenRouter Free)', provider: 'openrouter' },
-  { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral 7B (OpenRouter Free)', provider: 'openrouter' },
-  { id: 'google/gemma-2-9b-it:free', name: 'Gemma 2 9B (OpenRouter Free)', provider: 'openrouter' },
-  { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B (OpenRouter Free)', provider: 'openrouter' },
-  { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B (Groq Fast)', provider: 'groq' },
-  { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B (Groq Versatile)', provider: 'groq' },
-  { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B (OpenRouter)', provider: 'openrouter' },
-  { id: 'anthropic/claude-3.5-haiku', name: 'Claude 3.5 Haiku (OpenRouter)', provider: 'openrouter' },
-  { id: 'google/gemini-2.0-flash-001', name: 'Gemini 2.0 Flash (OpenRouter)', provider: 'openrouter' },
+  // ── Groq (fast, no OR key needed) ────────────────────────────────────────
+  { id: 'llama-3.1-8b-instant',       name: 'Llama 3.1 8B (Groq Fast)',        provider: 'groq' },
+  { id: 'llama-3.3-70b-versatile',    name: 'Llama 3.3 70B (Groq Versatile)',  provider: 'groq' },
+  // ── OpenRouter free ───────────────────────────────────────────────────────
+  { id: 'meta-llama/llama-3.3-70b-instruct:free',  name: 'Llama 3.3 70B (OpenRouter free)',      provider: 'openrouter' },
+  { id: 'google/gemma-4-31b-it:free',              name: 'Gemma 4 31B (OpenRouter free)',        provider: 'openrouter' },
+  { id: 'moonshotai/kimi-k2.6:free',               name: 'Kimi K2.6 (OpenRouter free)',          provider: 'openrouter' },
+  { id: 'nvidia/nemotron-3-super-120b-a12b:free',  name: 'Nemotron 120B (OpenRouter free)',      provider: 'openrouter' },
+  { id: 'qwen/qwen3-coder:free',                   name: 'Qwen3 Coder 480B (OpenRouter free)',   provider: 'openrouter' },
+  // ── OpenRouter paid ───────────────────────────────────────────────────────
+  { id: 'meta-llama/llama-3.3-70b-instruct',       name: 'Llama 3.3 70B (OpenRouter)',          provider: 'openrouter' },
+  { id: 'anthropic/claude-3.5-haiku',              name: 'Claude 3.5 Haiku (OpenRouter)',        provider: 'openrouter' },
+  { id: 'google/gemini-2.0-flash-001',             name: 'Gemini 2.0 Flash (OpenRouter)',        provider: 'openrouter' },
 ];
 
 export const INITIAL_AGENTS: Agent[] = [
